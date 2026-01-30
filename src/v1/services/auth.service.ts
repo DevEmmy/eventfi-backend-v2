@@ -128,4 +128,60 @@ export class AuthService {
 
         return { message: 'Password has been reset successfully' };
     }
+
+    static async updateProfile(userId: string, data: {
+        username?: string;
+        displayName?: string;
+        avatar?: string;
+        interests?: any[];
+        bio?: string;
+        location?: string;
+        website?: string;
+        socialLinks?: { twitter?: string; instagram?: string; linkedin?: string; facebook?: string };
+    }) {
+        // Check if username is taken by another user
+        if (data.username) {
+            const existingUser = await prisma.user.findFirst({
+                where: {
+                    username: data.username,
+                    id: { not: userId },
+                },
+            });
+
+            if (existingUser) {
+                throw new Error('Username is already taken');
+            }
+        }
+
+        const updatedUser = await prisma.user.update({
+            where: { id: userId },
+            data: {
+                ...(data.username && { username: data.username }),
+                ...(data.displayName && { displayName: data.displayName }),
+                ...(data.avatar && { avatar: data.avatar }),
+                ...(data.interests && { interests: data.interests }),
+                ...(data.bio !== undefined && { bio: data.bio }),
+                ...(data.location !== undefined && { location: data.location }),
+                ...(data.website !== undefined && { website: data.website }),
+                ...(data.socialLinks && { socialLinks: data.socialLinks }),
+            },
+            select: {
+                id: true,
+                email: true,
+                username: true,
+                displayName: true,
+                avatar: true,
+                bio: true,
+                location: true,
+                website: true,
+                socialLinks: true,
+                isVerified: true,
+                createdAt: true,
+                updatedAt: true,
+                interests: true,
+            },
+        });
+
+        return updatedUser;
+    }
 }

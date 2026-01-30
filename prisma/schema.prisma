@@ -19,11 +19,26 @@ model User {
   displayName  String?
   passwordHash String
   avatar       String?
+  bio          String?
+  location     String?    // e.g. "Lagos, Nigeria"
+  website      String?
+  socialLinks  Json?      // { twitter, instagram, linkedin, facebook }
   isVerified   Boolean    @default(false)
   roles        UserRole[]
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
   lastLoginAt  DateTime?
+  deletedAt    DateTime?      // Soft delete for account deletion
+  interests    EventCategory[]
+  
+  // Relations
+  events       Event[]
+  reviews      Review[]
+  followers    Follow[]   @relation("following")
+  following    Follow[]   @relation("followers")
+  favorites    Favorite[]
+  tickets      UserTicket[]
+  settings     UserSettings?
 }
 
 enum UserRole {
@@ -31,4 +46,187 @@ enum UserRole {
   vendor
   attendee
   dual
+}
+
+enum EventCategory {
+  MUSIC
+  TECH
+  BUSINESS
+  ARTS
+  SPORTS
+  EDUCATION
+  ENTERTAINMENT
+  COMMUNITY
+  WELLNESS
+  FOOD_DRINK
+  OTHER
+}
+
+enum EventStatus {
+  DRAFT
+  PUBLISHED
+  CANCELLED
+  COMPLETED
+  RESCHEDULED
+}
+
+enum EventPrivacy {
+  PUBLIC
+  PRIVATE
+  UNLISTED
+}
+
+enum TicketType {
+  FREE
+  PAID
+  DONATION
+}
+
+model Event {
+  id               String       @id @default(uuid()) @db.Uuid
+  title            String
+  description      String
+  shortDescription String?
+  category         EventCategory
+  tags             String[]
+
+  status           EventStatus  @default(DRAFT)
+  privacy          EventPrivacy @default(PUBLIC)
+
+  // Location
+  locationType     String       // PHYSICAL, ONLINE, HYBRID
+  address          String?
+  venueName        String?
+  city             String?
+  state            String?
+  country          String?
+  postalCode       String?
+  lat              Float?
+  lng              Float?
+  onlineUrl        String?
+  onlinePassword   String?
+
+  // Schedule
+  startDate        DateTime
+  endDate          DateTime
+  startTime        String
+  endTime          String
+  timezone         String
+
+  // Media
+  coverImage       String
+  gallery          String[]
+  videoUrl         String?
+
+  organizerId      String       @db.Uuid
+  organizer        User         @relation(fields: [organizerId], references: [id])
+  
+  tickets          Ticket[]
+  reviews          Review[]
+  scheduleItems    ScheduleItem[]
+  favorites        Favorite[]
+  userTickets      UserTicket[]
+
+  // Metadata
+  isFeatured       Boolean      @default(false)
+  attendeesCount   Int          @default(0)
+  favoritesCount   Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+}
+
+model Ticket {
+  id           String     @id @default(uuid()) @db.Uuid
+  name         String
+  description  String?
+  type         TicketType
+  price        Float
+  currency     String
+  quantity     Int
+  remaining    Int
+  maxPerUser   Int?
+  salesStart   DateTime?
+  salesEnd     DateTime?
+
+  eventId      String     @db.Uuid
+  event        Event      @relation(fields: [eventId], references: [id])
+  userTickets  UserTicket[]
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+}
+
+model Review {
+  id           String   @id @default(uuid()) @db.Uuid
+  rating       Int      // 1-5
+  title        String?
+  comment      String
+  photos       String[]
+  helpfulCount Int      @default(0)
+
+  eventId      String   @db.Uuid
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id])
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model ScheduleItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  time        String   // e.g. "10:00 AM"
+  activity    String
+  description String?
+  order       Int      @default(0)
+
+  eventId     String   @db.Uuid
+  event       Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model Follow {
+  id          String   @id @default(uuid()) @db.Uuid
+  followerId  String   @db.Uuid
+  follower    User     @relation("followers", fields: [followerId], references: [id])
+  followingId String   @db.Uuid
+  following   User     @relation("following", fields: [followingId], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+}
+
+model Favorite {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  user      User     @relation(fields: [userId], references: [id])
+  eventId   String   @db.Uuid
+  event     Event    @relation(fields: [eventId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userId, eventId])
+}
+
+model UserTicket {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @db.Uuid
+  user         User     @relation(fields: [userId], references: [id])
+  ticketId     String   @db.Uuid
+  ticket       Ticket   @relation(fields: [ticketId], references: [id])
+  eventId      String   @db.Uuid
+  event        Event    @relation(fields: [eventId], references: [id])
+  quantity     Int      @default(1)
+  status       String   @default("valid") // valid, used, cancelled, expired
+  qrCode       String?
+  purchaseDate DateTime @default(now())
+}
+
+model UserSettings {
+  id            String   @id @default(uuid()) @db.Uuid
+  userId        String   @unique @db.Uuid
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notifications Json     @default("{\"email\":true,\"push\":true,\"sms\":false,\"eventReminders\":true,\"eventNearby\":true,\"eventUpdates\":true,\"ticketSales\":true,\"bookingRequests\":true,\"bookingConfirmations\":true,\"reviews\":true,\"newMessages\":true,\"paymentNotifications\":true,\"marketing\":false,\"locationBased\":true}")
+  privacy       Json     @default("{\"profileVisibility\":\"public\",\"showEmail\":false,\"showPhone\":false,\"allowMessages\":true}")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 }
