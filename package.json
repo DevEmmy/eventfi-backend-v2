@@ -25,11 +25,14 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "google-auth-library": "^10.5.0",
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "pg": "^8.17.2",
     "redis": "^5.9.0",
-    "ts-node": "^10.9.2"
+    "socket.io": "^4.8.3",
+    "ts-node": "^10.9.2",
+    "uuid": "^13.0.0"
   },
   "devDependencies": {
     "@types/pg": "^8.16.0",

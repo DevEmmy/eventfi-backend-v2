@@ -254,4 +254,35 @@ export class AuthController {
             });
         }
     }
+
+    /**
+     * POST /auth/google - Authenticate with Google OAuth
+     */
+    static async googleAuth(req: Request, res: Response) {
+        try {
+            const { idToken } = req.body;
+
+            if (!idToken) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Google ID token is required',
+                });
+            }
+
+            const result = await AuthService.googleAuth(idToken);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result,
+            });
+        } catch (error: any) {
+            const statusCode = error.message.includes('Invalid') ? 401 :
+                error.message.includes('configured') ? 500 : 400;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Google authentication failed',
+            });
+        }
+    }
 }
+

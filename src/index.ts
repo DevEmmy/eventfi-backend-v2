@@ -6,6 +6,7 @@ import {
   connectDatabase,
   disconnectDatabase,
 } from './v1/config/database';
+import { initializeChatSocket } from './v1/websocket/chat.socket';
 // import { connectRedis, disconnectRedis } from './v1/config/redis';
 
 const DEFAULT_PORT = 8000;
@@ -28,6 +29,10 @@ const resolvePort = (value?: string) => {
 
 const port = resolvePort(process.env.PORT);
 const server = http.createServer(app);
+
+// Initialize WebSocket for chat
+const io = initializeChatSocket(server);
+console.log('🔌 WebSocket initialized for chat at /ws/chat');
 
 const handleServerError = (error: NodeJS.ErrnoException) => {
   if (error.syscall !== 'listen') {
@@ -62,6 +67,9 @@ const handleServerListening = () => {
 
 const gracefulShutdown = (signal: NodeJS.Signals) => {
   console.log(`${signal} received. Closing server...`);
+
+  // Close WebSocket connections
+  io.close();
 
   server.close((error) => {
     if (error) {

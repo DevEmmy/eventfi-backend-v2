@@ -19,6 +19,7 @@ model User {
   displayName  String?
   passwordHash String
   avatar       String?
+  googleId     String?    @unique  // For Google OAuth
   bio          String?
   location     String?    // e.g. "Lagos, Nigeria"
   website      String?
@@ -32,13 +33,17 @@ model User {
   interests    EventCategory[]
   
   // Relations
-  events       Event[]
-  reviews      Review[]
-  followers    Follow[]   @relation("following")
-  following    Follow[]   @relation("followers")
-  favorites    Favorite[]
-  tickets      UserTicket[]
-  settings     UserSettings?
+  events           Event[]
+  reviews          Review[]
+  followers        Follow[]   @relation("following")
+  following        Follow[]   @relation("followers")
+  favorites        Favorite[]
+  tickets          UserTicket[]
+  settings         UserSettings?
+  orders           BookingOrder[]
+  teamMemberships  EventTeamMember[]
+  chatMessages     ChatMessage[]
+  chatMemberships  ChatMember[]
 }
 
 enum UserRole {
@@ -80,6 +85,18 @@ enum TicketType {
   FREE
   PAID
   DONATION
+}
+
+enum TeamRole {
+  ORGANIZER
+  CO_HOST
+  MANAGER
+  ASSISTANT
+}
+
+enum TeamMemberStatus {
+  ACTIVE
+  PENDING
 }
 
 model Event {
@@ -126,6 +143,9 @@ model Event {
   scheduleItems    ScheduleItem[]
   favorites        Favorite[]
   userTickets      UserTicket[]
+  orders           BookingOrder[]
+  teamMembers      EventTeamMember[]
+  chat             EventChat?
 
   // Metadata
   isFeatured       Boolean      @default(false)
@@ -151,6 +171,8 @@ model Ticket {
   eventId      String     @db.Uuid
   event        Event      @relation(fields: [eventId], references: [id])
   userTickets  UserTicket[]
+  orderItems   OrderItem[]
+  attendees    Attendee[]
 
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
@@ -229,4 +251,173 @@ model UserSettings {
   privacy       Json     @default("{\"profileVisibility\":\"public\",\"showEmail\":false,\"showPhone\":false,\"allowMessages\":true}")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// ============ BOOKING SYSTEM ============
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  REFUNDED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+model BookingOrder {
+  id              String        @id @default(uuid()) @db.Uuid
+  userId          String        @db.Uuid
+  user            User          @relation(fields: [userId], references: [id])
+  eventId         String        @db.Uuid
+  event           Event         @relation(fields: [eventId], references: [id])
+  
+  items           OrderItem[]
+  attendees       Attendee[]
+  
+  // Pricing
+  subtotal        Float
+  serviceFee      Float         @default(0)
+  discount        Float         @default(0)
+  total           Float
+  currency        String        @default("NGN")
+  
+  // Status
+  status          OrderStatus   @default(PENDING)
+  paymentStatus   PaymentStatus @default(PENDING)
+  paymentMethod   String?       // card, bank_transfer, mobile_money, free
+  paymentReference String?
+  
+  // Promo
+  promoCode       String?
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  expiresAt       DateTime?     // Order expires if not paid
+  paidAt          DateTime?
+  confirmedAt     DateTime?
+}
+
+model OrderItem {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @db.Uuid
+  order           BookingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketId        String       @db.Uuid
+  ticket          Ticket       @relation(fields: [ticketId], references: [id])
+  ticketName      String
+  quantity        Int
+  unitPrice       Float
+  totalPrice      Float
+}
+
+model Attendee {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @db.Uuid
+  order           BookingOrder @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ticketId        String       @db.Uuid
+  ticket          Ticket       @relation(fields: [ticketId], references: [id])
+  name            String
+  email           String
+  phone           String?
+  ticketCode      String       @unique  // Unique QR code content
+  checkedIn       Boolean      @default(false)
+  checkedInAt     DateTime?
+  checkInMethod   String?      // 'manual' | 'qr_scan'
+  status          String       @default("valid")  // valid, used, cancelled, expired
+  createdAt       DateTime     @default(now())
+}
+
+model EventTeamMember {
+  id          String           @id @default(uuid()) @db.Uuid
+  eventId     String           @db.Uuid
+  event       Event            @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId      String?          @db.Uuid  // null if pending invitation
+  user        User?            @relation(fields: [userId], references: [id])
+  email       String           // for pending invitations
+  role        TeamRole
+  status      TeamMemberStatus @default(PENDING)
+  inviteToken String?          // for pending invitations
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([eventId, userId])
+  @@unique([eventId, email])
+}
+
+// ==================== CHAT ====================
+
+enum MessageType {
+  TEXT
+  IMAGE
+  ANNOUNCEMENT
+  SYSTEM
+}
+
+enum ChatRole {
+  MEMBER
+  MODERATOR
+  ORGANIZER
+}
+
+model EventChat {
+  id          String        @id @default(uuid()) @db.Uuid
+  eventId     String        @unique @db.Uuid
+  event       Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  isActive    Boolean       @default(true)
+  
+  // Settings
+  slowMode    Int           @default(0)  // seconds between messages, 0 = disabled
+  membersOnly Boolean       @default(true) // only ticket holders can send
+  
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  
+  messages    ChatMessage[]
+  members     ChatMember[]
+}
+
+model ChatMessage {
+  id          String       @id @default(uuid()) @db.Uuid
+  chatId      String       @db.Uuid
+  chat        EventChat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  senderId    String       @db.Uuid
+  sender      User         @relation(fields: [senderId], references: [id])
+  
+  content     String
+  type        MessageType  @default(TEXT)
+  
+  replyToId   String?      @db.Uuid
+  replyTo     ChatMessage? @relation("Replies", fields: [replyToId], references: [id])
+  replies     ChatMessage[] @relation("Replies")
+  
+  isPinned    Boolean      @default(false)
+  isDeleted   Boolean      @default(false)
+  deletedBy   String?      @db.Uuid
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model ChatMember {
+  id          String       @id @default(uuid()) @db.Uuid
+  chatId      String       @db.Uuid
+  chat        EventChat    @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  userId      String       @db.Uuid
+  user        User         @relation(fields: [userId], references: [id])
+  
+  role        ChatRole     @default(MEMBER)
+  isMuted     Boolean      @default(false)
+  mutedUntil  DateTime?
+  
+  joinedAt    DateTime     @default(now())
+  lastSeenAt  DateTime     @default(now())
+  
+  @@unique([chatId, userId])
 }

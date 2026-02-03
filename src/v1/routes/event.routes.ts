@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { EventController } from '../controllers/event.controller';
 import { ReviewController } from '../controllers/review.controller';
 import { authenticate } from '../middlewares/auth.middleware';
+import { BookingService } from '../services/booking.service';
 
 const router = Router();
 
@@ -19,6 +20,24 @@ router.delete('/:id', authenticate, EventController.delete);
 
 // Related events
 router.get('/:id/related', EventController.getRelated);
+
+// Tickets - availability endpoints (no auth required)
+router.get('/:id/tickets', async (req, res) => {
+    try {
+        const tickets = await BookingService.getEventTickets(req.params.id);
+        res.json({ status: 'success', data: tickets });
+    } catch (error: any) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
+router.get('/:id/tickets/availability', async (req, res) => {
+    try {
+        const availability = await BookingService.checkAvailability(req.params.id);
+        res.json({ status: 'success', data: availability });
+    } catch (error: any) {
+        res.status(500).json({ status: 'error', message: error.message });
+    }
+});
 
 // Reviews
 router.get('/:id/reviews', ReviewController.getReviews);

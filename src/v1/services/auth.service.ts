@@ -184,4 +184,94 @@ export class AuthService {
 
         return updatedUser;
     }
+
+    /**
+     * Google OAuth authentication
+     * Verifies Google ID token and creates/logs in user
+     */
+    static async googleAuth(idToken: string) {
+        const { OAuth2Client } = await import('google-auth-library');
+
+        const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+        if (!GOOGLE_CLIENT_ID) {
+            throw new Error('Google OAuth is not configured');
+        }
+
+        const client = new OAuth2Client(GOOGLE_CLIENT_ID);
+
+        let payload;
+        try {
+            const ticket = await client.verifyIdToken({
+                idToken,
+                audience: GOOGLE_CLIENT_ID,
+            });
+            payload = ticket.getPayload();
+        } catch (error) {
+            throw new Error('Invalid Google token');
+        }
+
+        if (!payload || !payload.email) {
+            throw new Error('Invalid Google token payload');
+        }
+
+        const { email, name, picture, sub: googleId, email_verified } = payload;
+
+        // Check if user exists
+        let user = await prisma.user.findUnique({
+            where: { email },
+        });
+
+        if (user) {
+            // Existing user - update Google ID if not set, and update last login
+            if (!user.googleId) {
+                user = await prisma.user.update({
+                    where: { id: user.id },
+                    data: {
+                        googleId,
+                        lastLoginAt: new Date(),
+                        // Auto-verify if Google email is verified
+                        ...(email_verified && !user.isVerified && { isVerified: true }),
+                    },
+                });
+            } else {
+                await prisma.user.update({
+                    where: { id: user.id },
+                    data: { lastLoginAt: new Date() },
+                });
+            }
+        } else {
+            // New user - create account
+            user = await prisma.user.create({
+                data: {
+                    email,
+                    googleId,
+                    displayName: name || undefined,
+                    avatar: picture || undefined,
+                    isVerified: email_verified || false,
+                    // No password for Google users
+                    passwordHash: '',
+                },
+            });
+        }
+
+        const token = jwt.sign(
+            { userId: user.id, email: user.email },
+            JWT_SECRET as jwt.Secret,
+            { expiresIn: JWT_EXPIRES_IN as any }
+        );
+
+        return {
+            user: {
+                id: user.id,
+                email: user.email,
+                username: user.username,
+                displayName: user.displayName,
+                avatar: user.avatar,
+                isVerified: user.isVerified,
+                isNewUser: !user.username, // True if user needs to complete onboarding
+            },
+            token,
+        };
+    }
 }
+

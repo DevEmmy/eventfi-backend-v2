@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import { UserController } from '../controllers/user.controller';
 import { SettingsController } from '../controllers/settings.controller';
+import { BookingController } from '../controllers/booking.controller';
 import { authenticate, optionalAuth } from '../middlewares/auth.middleware';
 
 const router = Router();
 
 // Current user routes (require auth)
 router.get('/me/events', authenticate, UserController.getMyEvents);
-router.get('/me/tickets', authenticate, UserController.getMyTickets);
+router.get('/me/tickets', authenticate, BookingController.getUserTickets);
+router.get('/me/orders', authenticate, BookingController.getUserOrders);
 router.get('/me/favorites', authenticate, UserController.getMyFavorites);
 
 // Settings routes
