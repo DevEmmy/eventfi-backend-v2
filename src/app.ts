@@ -5,7 +5,7 @@ import cors from 'cors';
 const app = express();
 
 app.use(cors({
-    origin: 'http://localhost:3000',
+    origin: ['https://eventfi.live', 'https://www.eventfi.live'],
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
