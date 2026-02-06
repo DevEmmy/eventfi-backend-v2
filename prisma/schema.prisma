@@ -32,6 +32,9 @@ model User {
   deletedAt    DateTime?      // Soft delete for account deletion
   interests    EventCategory[]
   
+  resetPasswordToken   String?    @unique
+  resetPasswordExpires DateTime?
+  
   // Relations
   events           Event[]
   reviews          Review[]

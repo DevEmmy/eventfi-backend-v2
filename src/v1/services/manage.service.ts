@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { EmailService } from './email.service';
 
 interface TeamPermissions {
     canEdit: boolean;
@@ -442,8 +443,20 @@ export class ManageService {
         subject: string,
         body: string
     ) {
+        // 1. Check access
         await this.checkEventAccess(userId, eventId, 'canManageAttendees');
 
+        // 2. Fetch event and organizer details for the template
+        const event = await prisma.event.findUnique({
+            where: { id: eventId },
+            include: {
+                organizer: { select: { displayName: true, email: true } }
+            }
+        });
+
+        if (!event) throw new Error('Event not found');
+
+        // 3. Define recipient filter
         let where: any = { order: { eventId, status: 'CONFIRMED' } };
 
         if (recipients === 'checked_in') where.checkedIn = true;
@@ -452,18 +465,39 @@ export class ManageService {
             where.id = { in: attendeeIds };
         }
 
+        // 4. Fetch attendees with their emails
         const attendees = await prisma.attendee.findMany({
             where,
-            select: { id: true, name: true, email: true, ticket: { select: { name: true } } }
+            select: { id: true, name: true, email: true }
         });
 
-        // TODO: Implement actual email sending via queue
-        // For now, just return count
-        console.log(`[Bulk Email] Event ${eventId}: Queued ${attendees.length} emails`);
+        if (attendees.length === 0) {
+            return {
+                emailsSent: 0,
+                message: 'No attendees found for the selected filter'
+            };
+        }
+
+        // 5. Send emails (for now, iterating; in production, this should be a background job)
+        // We use Promise.all for some concurrency, but be careful with SMTP rate limits
+        const emailPromises = attendees.map(attendee =>
+            EmailService.sendAnnouncement(attendee.email, {
+                eventTitle: event.title,
+                subject: subject,
+                content: body,
+                organizerName: event.organizer.displayName || 'Event Organizer'
+            })
+        );
+
+        // We don't await ALL to avoid blocking the request for too long if there are many attendees,
+        // but for small batches it's okay. For 100+ attendees, a worker pattern is mandatory.
+        await Promise.all(emailPromises);
+
+        console.log(`[Bulk Email] Event ${eventId}: Sent ${attendees.length} emails`);
 
         return {
             emailsSent: attendees.length,
-            message: 'Bulk email queued for delivery'
+            message: `Successfully sent ${attendees.length} emails`
         };
     }
 }

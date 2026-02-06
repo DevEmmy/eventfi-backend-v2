@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { EventCategory, EventStatus, EventPrivacy, TicketType, Prisma } from '@prisma/client';
+import { ChatService } from './chat.service';
 
 // Interfaces matching the user's request structure (for input)
 export interface CreateEventInput {
@@ -114,6 +115,14 @@ export class EventService {
                 }
             }
         });
+
+        // Auto-create event chat and add organizer
+        try {
+            await ChatService.getOrJoinChat(event.id, userId);
+        } catch (error) {
+            console.error('Failed to auto-create chat:', error);
+            // Don't fail the event creation if chat creation fails
+        }
 
         return event;
     }

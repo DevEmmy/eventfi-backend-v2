@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
+import { ChatService } from './chat.service';
 
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
@@ -340,6 +341,14 @@ export class BookingService {
             where: { id: order.eventId },
             data: { attendeesCount: { increment: totalTickets } }
         });
+
+        // Auto-add user to event chat
+        try {
+            await ChatService.getOrJoinChat(order.eventId, userId);
+        } catch (error) {
+            console.error('Failed to auto-join chat:', error);
+            // Don't fail order confirmation if chat join fails
+        }
 
         return {
             orderId: order.id,

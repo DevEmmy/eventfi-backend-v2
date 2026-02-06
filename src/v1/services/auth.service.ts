@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/database';
-import redis from '../config/redis';
+import { EmailService } from './email.service';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
@@ -34,6 +34,9 @@ export class AuthService {
             JWT_SECRET as jwt.Secret,
             { expiresIn: JWT_EXPIRES_IN as any }
         );
+
+        // Send welcome email (async)
+        EmailService.sendWelcomeEmail(user.email, user.email.split('@')[0]);
 
         return {
             user: {
@@ -90,41 +93,52 @@ export class AuthService {
 
         if (!user) {
             // We don't want to reveal if a user exists or not for security reasons
-            // but for now, let's keep it simple or return success anyway
-            return;
+            // but for now, we'll just return.
+            return { message: 'If an account exists with this email, a reset link has been sent.' };
         }
 
         // Generate a random token
         const resetToken = crypto.randomBytes(32).toString('hex');
+        const resetExpires = new Date(Date.now() + RESET_TOKEN_EXPIRY * 1000);
 
-        // Store in Redis with expiry
-        const redisKey = `reset_password:${resetToken}`;
-        await redis.set(redisKey, user.id, 'EX', RESET_TOKEN_EXPIRY);
+        // Store in Database
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                resetPasswordToken: resetToken,
+                resetPasswordExpires: resetExpires,
+            },
+        });
 
-        // In a real app, send an email. For now, log it.
-        console.log(`[DEBUG] Password reset token for ${email}: ${resetToken}`);
-        console.log(`[DEBUG] Reset URL: http://localhost:3000/reset-password?token=${resetToken}`);
+        // Send password reset email
+        const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
+        await EmailService.sendPasswordResetEmail(user.email, resetUrl);
 
         return { message: 'If an account exists with this email, a reset link has been sent.' };
     }
 
     static async resetPassword(token: string, newPassword: string) {
-        const redisKey = `reset_password:${token}`;
-        const userId = await redis.get(redisKey);
+        const user = await prisma.user.findFirst({
+            where: {
+                resetPasswordToken: token,
+                resetPasswordExpires: { gt: new Date() },
+            },
+        });
 
-        if (!userId) {
+        if (!user) {
             throw new Error('Invalid or expired reset token');
         }
 
         const passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
 
         await prisma.user.update({
-            where: { id: userId },
-            data: { passwordHash },
+            where: { id: user.id },
+            data: {
+                passwordHash,
+                resetPasswordToken: null,
+                resetPasswordExpires: null,
+            },
         });
-
-        // Delete token after use
-        await redis.del(redisKey);
 
         return { message: 'Password has been reset successfully' };
     }
@@ -259,6 +273,11 @@ export class AuthService {
             JWT_SECRET as jwt.Secret,
             { expiresIn: JWT_EXPIRES_IN as any }
         );
+
+        // Send welcome email for brand new users
+        if (!user.username) {
+            EmailService.sendWelcomeEmail(user.email, user.displayName || user.email.split('@')[0]);
+        }
 
         return {
             user: {
