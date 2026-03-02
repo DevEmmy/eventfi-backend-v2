@@ -1,56 +1,27 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { EmailTemplates } from '../utils/email.templates';
 
 /**
  * Email Service
- * Handles sending transactional and automated emails using Nodemailer.
+ * Handles sending transactional and automated emails using Resend (HTTP-based).
  */
 export class EmailService {
-    private static transporter: nodemailer.Transporter | null = null;
+    private static resend: Resend | null = null;
 
     /**
-     * Initialize the transporter
+     * Initialize the Resend client
      */
-    private static async getTransporter(): Promise<nodemailer.Transporter> {
-        if (!this.transporter) {
-            let auth = {
-                user: process.env.SMTP_USER,
-                pass: process.env.SMTP_PASS,
-            };
-
-
-
-            // If no credentials, create a test account (Ethereal)
-            if (!auth.user || !auth.pass) {
-                console.log('[EmailService] SMTP credentials missing in .env. Creating test account...');
-                const testAccount = await nodemailer.createTestAccount();
-                auth = {
-                    user: testAccount.user,
-                    pass: testAccount.pass,
-                };
-                console.log(`[EmailService] Created test account: ${auth.user}`);
-            } else {
-                console.log(`[EmailService] Using SMTP user: ${auth.user}`);
+    private static getClient(): Resend {
+        if (!this.resend) {
+            const apiKey = process.env.RESEND_API_KEY;
+            if (!apiKey) {
+                console.error('[EmailService] RESEND_API_KEY is missing in .env');
+                throw new Error('RESEND_API_KEY is not configured');
             }
-
-            const port = parseInt(process.env.SMTP_PORT || '587');
-
-            this.transporter = nodemailer.createTransport({
-                service: 'gmail',
-                host: process.env.SMTP_HOST || 'smtp.gmail.com',
-                port,
-                secure: port === 465, // true for 465, false for other ports
-                auth,
-                connectionTimeout: 10000, // 10 seconds
-                greetingTimeout: 10000,   // 10 seconds
-                socketTimeout: 15000,     // 15 seconds
-                tls: {
-                    rejectUnauthorized: false,
-                },
-            });
-            console.log('[EmailService] Transporter initialized.');
+            this.resend = new Resend(apiKey);
+            console.log('[EmailService] Resend client initialized.');
         }
-        return this.transporter;
+        return this.resend;
     }
 
     /**
@@ -58,30 +29,26 @@ export class EmailService {
      */
     static async send(to: string, subject: string, html: string, text?: string) {
         try {
-            const transporter = await this.getTransporter();
-            const from = process.env.SMTP_FROM || '"EventFi" <noreply@eventfi.com>';
+            const client = this.getClient();
+            const from = process.env.EMAIL_FROM || 'EventFi <noreply@eventfi.com>';
 
-            const info = await transporter.sendMail({
+            const { data, error } = await client.emails.send({
                 from,
-                to,
+                to: [to],
                 subject,
-                text: text || '',
                 html,
+                text: text || '',
             });
 
-            console.log(`[EmailService] Email sent to ${to}: ${info.messageId}`);
-
-            // If using Ethereal, log the preview URL
-            const previewUrl = nodemailer.getTestMessageUrl(info);
-            if (previewUrl) {
-                console.log(`[EmailService] Preview URL: ${previewUrl}`);
+            if (error) {
+                console.error('[EmailService] Resend error:', error);
+                return null;
             }
 
-            return info;
+            console.log(`[EmailService] Email sent to ${to}: ${data?.id}`);
+            return data;
         } catch (error) {
             console.error('[EmailService] Error sending email:', error);
-            // We don't throw error to avoid breaking the main process (transactional)
-            // unless it's critical. Usually, we'd log this to a monitoring service.
             return null;
         }
     }
