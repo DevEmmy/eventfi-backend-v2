@@ -18,7 +18,7 @@ export class EmailService {
                 pass: process.env.SMTP_PASS,
             };
 
-      
+
 
             // If no credentials, create a test account (Ethereal)
             if (!auth.user || !auth.pass) {
@@ -41,7 +41,12 @@ export class EmailService {
                 port,
                 secure: port === 465, // true for 465, false for other ports
                 auth,
-                
+                connectionTimeout: 10000, // 10 seconds
+                greetingTimeout: 10000,   // 10 seconds
+                socketTimeout: 15000,     // 15 seconds
+                tls: {
+                    rejectUnauthorized: false,
+                },
             });
             console.log('[EmailService] Transporter initialized.');
         }
