@@ -36,12 +36,12 @@ export class EmailService {
             const port = parseInt(process.env.SMTP_PORT || '587');
 
             this.transporter = nodemailer.createTransport({
-                host: process.env.SMTP_HOST || 'smtp.ethereal.email',
+                service: 'gmail',
+                host: process.env.SMTP_HOST || 'smtp.gmail.com',
                 port,
                 secure: port === 465, // true for 465, false for other ports
                 auth,
-                connectionTimeout: 10000, // 10 seconds
-                socketTimeout: 10000,
+                
             });
             console.log('[EmailService] Transporter initialized.');
         }
