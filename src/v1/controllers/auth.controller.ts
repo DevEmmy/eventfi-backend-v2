@@ -256,6 +256,55 @@ export class AuthController {
     }
 
     /**
+     * POST /auth/verify-email - Verify email with token
+     */
+    static async verifyEmail(req: Request, res: Response) {
+        try {
+            const { token } = req.body;
+
+            if (!token) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Verification token is required',
+                });
+            }
+
+            const result = await AuthService.verifyEmail(token);
+
+            return res.status(200).json({
+                status: 'success',
+                message: result.message,
+            });
+        } catch (error: any) {
+            return res.status(400).json({
+                status: 'error',
+                message: error.message || 'Verification failed',
+            });
+        }
+    }
+
+    /**
+     * POST /auth/resend-verification - Resend verification email
+     */
+    static async resendVerification(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const result = await AuthService.resendVerification(userId);
+
+            return res.status(200).json({
+                status: 'success',
+                message: result.message,
+            });
+        } catch (error: any) {
+            const statusCode = error.message.includes('already verified') ? 400 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to resend verification',
+            });
+        }
+    }
+
+    /**
      * POST /auth/google - Authenticate with Google OAuth
      */
     static async googleAuth(req: Request, res: Response) {

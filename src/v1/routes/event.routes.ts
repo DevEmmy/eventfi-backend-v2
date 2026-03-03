@@ -2,11 +2,13 @@ import { Router } from 'express';
 import { EventController } from '../controllers/event.controller';
 import { ReviewController } from '../controllers/review.controller';
 import { authenticate } from '../middlewares/auth.middleware';
+import { validate } from '../middlewares/validate.middleware';
+import { createEventSchema, updateEventSchema, reviewSchema } from '../validations/event.schema';
 import { BookingService } from '../services/booking.service';
 
 const router = Router();
 
-router.post('/', authenticate, EventController.create);
+router.post('/', authenticate, validate(createEventSchema), EventController.create);
 router.get('/', EventController.findAll);
 
 // Specific routes before parameterized routes
@@ -15,7 +17,7 @@ router.get('/trending', EventController.getTrending);
 
 // Event detail routes
 router.get('/:id', EventController.findOne);
-router.patch('/:id', authenticate, EventController.update);
+router.patch('/:id', authenticate, validate(updateEventSchema), EventController.update);
 router.delete('/:id', authenticate, EventController.delete);
 
 // Related events
@@ -42,6 +44,6 @@ router.get('/:id/tickets/availability', async (req, res) => {
 // Reviews
 router.get('/:id/reviews', ReviewController.getReviews);
 router.get('/:id/reviews/stats', ReviewController.getStats);
-router.post('/:id/reviews', authenticate, ReviewController.createReview);
+router.post('/:id/reviews', authenticate, validate(reviewSchema), ReviewController.createReview);
 
 export default router;

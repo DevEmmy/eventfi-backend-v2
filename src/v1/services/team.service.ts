@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { ManageService } from './manage.service';
+import { emailQueue } from '../jobs/email.queue';
 
 const ROLE_PERMISSIONS: Record<string, any> = {
     ORGANIZER: { canEdit: true, canManageAttendees: true, canViewAnalytics: true, canManageTeam: true },
@@ -124,9 +125,16 @@ export class TeamService {
             include: { user: { select: { id: true, displayName: true, email: true, avatar: true } } }
         });
 
-        if (!targetUser) {
-            // TODO: Send invitation email
-            console.log(`[Team Invite] Sending invitation to ${email} for event ${eventId}`);
+        if (!targetUser && inviteToken) {
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const inviteUrl = `${frontendUrl}/team/accept?token=${inviteToken}`;
+            await emailQueue.add('team-invitation', {
+                type: 'team-invitation' as const,
+                to: email,
+                eventTitle: event?.title || 'Event',
+                role: role.replace('_', ' ').toLowerCase(),
+                inviteUrl,
+            });
             invitationSent = true;
         }
 

@@ -3,9 +3,13 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/database';
 import { EmailService } from './email.service';
+import { emailQueue } from '../jobs/email.queue';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not set.');
+}
+const JWT_SECRET: string = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 const RESET_TOKEN_EXPIRY = 3600; // 1 hour in seconds
 
@@ -22,10 +26,16 @@ export class AuthService {
 
         const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
 
+        // Generate email verification token
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
         const user = await prisma.user.create({
             data: {
                 email,
                 passwordHash,
+                emailVerificationToken: verificationToken,
+                emailVerificationExpires: verificationExpires,
             },
         });
 
@@ -35,8 +45,14 @@ export class AuthService {
             { expiresIn: JWT_EXPIRES_IN as any }
         );
 
-        // Send welcome email (async)
-        EmailService.sendWelcomeEmail(user.email, user.email.split('@')[0]);
+        // Send verification email via queue
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
+        await emailQueue.add('email-verification', {
+            type: 'email-verification' as const,
+            to: user.email,
+            verifyUrl,
+        });
 
         return {
             user: {
@@ -291,6 +307,73 @@ export class AuthService {
             },
             token,
         };
+    }
+
+    /**
+     * Verify email address using token
+     */
+    static async verifyEmail(token: string) {
+        const user = await prisma.user.findFirst({
+            where: {
+                emailVerificationToken: token,
+                emailVerificationExpires: { gt: new Date() },
+            },
+        });
+
+        if (!user) {
+            throw new Error('Invalid or expired verification token');
+        }
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                isVerified: true,
+                emailVerificationToken: null,
+                emailVerificationExpires: null,
+            },
+        });
+
+        // Send welcome email now that they're verified
+        await emailQueue.add('welcome', {
+            type: 'welcome' as const,
+            to: user.email,
+            name: user.displayName || user.email.split('@')[0],
+        });
+
+        return { message: 'Email verified successfully' };
+    }
+
+    /**
+     * Resend verification email
+     */
+    static async resendVerification(userId: string) {
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+        });
+
+        if (!user) throw new Error('User not found');
+        if (user.isVerified) throw new Error('Email is already verified');
+
+        const verificationToken = crypto.randomBytes(32).toString('hex');
+        const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                emailVerificationToken: verificationToken,
+                emailVerificationExpires: verificationExpires,
+            },
+        });
+
+        const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+        const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
+        await emailQueue.add('email-verification', {
+            type: 'email-verification' as const,
+            to: user.email,
+            verifyUrl,
+        });
+
+        return { message: 'Verification email sent' };
     }
 }
 

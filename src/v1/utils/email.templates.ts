@@ -5,6 +5,30 @@
 
 export const EmailTemplates = {
     /**
+     * Email Verification Template
+     */
+    emailVerification: (verifyUrl: string) => ({
+        subject: 'Verify your EventFi email address',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">Verify your email</h2>
+                <p>Thanks for signing up for EventFi! Please verify your email address by clicking the button below.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${verifyUrl}"
+                       style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       Verify Email
+                    </a>
+                </div>
+                <p>This link will expire in 24 hours.</p>
+                <p>If you didn't create an account, you can safely ignore this email.</p>
+                <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;" />
+                <p style="font-size: 12px; color: #666;">If the button doesn't work, copy and paste this URL: ${verifyUrl}</p>
+            </div>
+        `,
+        text: `Verify your EventFi email by visiting: ${verifyUrl}. This link expires in 24 hours.`
+    }),
+
+    /**
      * Welcome Email Template
      */
     welcome: (name: string) => ({
@@ -88,6 +112,49 @@ export const EmailTemplates = {
             </div>
         `,
         text: `Your ticket for ${data.eventTitle} is confirmed! Date: ${data.startDate}, Venue: ${data.venue}. View your tickets at ${process.env.FRONTEND_URL || 'http://localhost:3000'}/tickets`
+    }),
+
+    /**
+     * Team Invitation Template
+     */
+    teamInvitation: (data: { eventTitle: string, role: string, inviteUrl: string }) => ({
+        subject: `You're invited to join the team for ${data.eventTitle}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">Team Invitation</h2>
+                <p>You've been invited to join the team for <strong>${data.eventTitle}</strong> as a <strong>${data.role}</strong>.</p>
+                <p>Click the button below to accept your invitation and join the team.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${data.inviteUrl}"
+                       style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       Accept Invitation
+                    </a>
+                </div>
+                <p>If you weren't expecting this, you can safely ignore this email.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `You've been invited to join the team for ${data.eventTitle} as a ${data.role}. Accept at: ${data.inviteUrl}`
+    }),
+
+    /**
+     * Event Cancellation Template
+     */
+    eventCancellation: (data: { eventTitle: string, eventDate: string, reason?: string, refundPolicy: string }) => ({
+        subject: `Event Cancelled: ${data.eventTitle}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #ef4444;">Event Cancelled</h2>
+                <p>We're sorry to inform you that <strong>${data.eventTitle}</strong> scheduled for <strong>${data.eventDate}</strong> has been cancelled.</p>
+                ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}
+                <div style="background-color: #f8fafc; padding: 15px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 5px 0;"><strong>Refund Policy:</strong> ${data.refundPolicy === 'full' ? 'Full refund will be processed' : data.refundPolicy === 'partial' ? 'Partial refund will be processed' : 'No refund applicable'}</p>
+                </div>
+                <p>We apologize for any inconvenience.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Event Cancelled: ${data.eventTitle} (${data.eventDate}). ${data.reason || ''} Refund: ${data.refundPolicy}. We apologize for any inconvenience.`
     }),
 
     /**

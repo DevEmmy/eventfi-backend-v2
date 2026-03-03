@@ -35,6 +35,9 @@ model User {
   resetPasswordToken   String?   @unique
   resetPasswordExpires DateTime?
 
+  emailVerificationToken   String?   @unique
+  emailVerificationExpires DateTime?
+
   // Relations
   events          Event[]
   reviews         Review[]
@@ -47,6 +50,42 @@ model User {
   teamMemberships EventTeamMember[]
   chatMessages    ChatMessage[]
   chatMemberships ChatMember[]
+  notifications   Notification[]
+  vendor          Vendor?
+}
+
+// ============ NOTIFICATIONS ============
+
+enum NotificationType {
+  TICKET_SALE
+  EVENT_REMINDER
+  EVENT_NEARBY
+  BOOKING_REQUEST
+  BOOKING_ACCEPTED
+  BOOKING_DECLINED
+  REVIEW_RECEIVED
+  VENDOR_BOOKED
+  EVENT_UPDATED
+  EVENT_CANCELLED
+  PAYMENT_RECEIVED
+  MESSAGE
+  SYSTEM
+}
+
+model Notification {
+  id        String           @id @default(uuid()) @db.Uuid
+  userId    String           @db.Uuid
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  read      Boolean          @default(false)
+  actionUrl String?
+  metadata  Json?
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 enum UserRole {
@@ -423,4 +462,122 @@ model ChatMember {
   lastSeenAt DateTime @default(now())
 
   @@unique([chatId, userId])
+}
+
+// ==================== VENDOR / MARKETPLACE ====================
+
+enum VendorCategory {
+  PHOTOGRAPHY
+  VIDEOGRAPHY
+  DJ_MUSIC
+  CATERING
+  VENUES
+  DECORATIONS
+  SECURITY
+  LIGHTING
+  SOUND_SYSTEM
+  OTHER
+}
+
+enum VendorAvailability {
+  AVAILABLE
+  LIMITED
+  UNAVAILABLE
+}
+
+enum VendorBookingStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  COMPLETED
+  CANCELLED
+}
+
+model Vendor {
+  id           String             @id @default(uuid()) @db.Uuid
+  userId       String             @db.Uuid
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name         String
+  category     VendorCategory
+  description  String
+  logo         String?
+  coverImage   String?
+  portfolio    String[]
+  specialties  String[]
+  location     String             // e.g. "Lagos, Nigeria"
+  address      String?
+  phone        String?
+  email        String?
+  website      String?
+  priceMin     Float?
+  priceMax     Float?
+  currency     String             @default("NGN")
+  yearsOfExperience Int           @default(0)
+  availability VendorAvailability @default(AVAILABLE)
+  isVerified   Boolean            @default(false)
+
+  // Computed/cached stats
+  averageRating Float             @default(0)
+  reviewCount   Int               @default(0)
+  bookingCount  Int               @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviews  VendorReview[]
+  bookings VendorBooking[]
+
+  @@unique([userId])
+  @@index([category])
+  @@index([location])
+  @@index([averageRating])
+}
+
+model VendorReview {
+  id       String @id @default(uuid()) @db.Uuid
+  vendorId String @db.Uuid
+  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  userId   String @db.Uuid
+  rating   Int    // 1-5
+  comment  String
+  photos   String[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([vendorId, userId])
+}
+
+model VendorBooking {
+  id       String              @id @default(uuid()) @db.Uuid
+  vendorId String              @db.Uuid
+  vendor   Vendor              @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  userId   String              @db.Uuid // The user requesting the booking (organizer)
+  status   VendorBookingStatus @default(PENDING)
+
+  // Event details
+  eventName     String
+  eventDate     DateTime
+  eventTime     String
+  eventLocation String
+  eventType     String
+  guestCount    Int           @default(0)
+  duration      String?
+
+  // Contact
+  contactName  String
+  contactEmail String
+  contactPhone String
+
+  specialRequests String?
+  estimatedPrice  Float?
+  currency        String @default("NGN")
+
+  declineReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([vendorId, status])
+  @@index([userId])
 }

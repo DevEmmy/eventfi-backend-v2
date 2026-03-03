@@ -3,7 +3,10 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ChatService } from '../services/chat.service';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'eventfi-secret-key';
+if (!process.env.JWT_SECRET) {
+    throw new Error('FATAL: JWT_SECRET environment variable is not set.');
+}
+const JWT_SECRET: string = process.env.JWT_SECRET;
 
 interface AuthenticatedSocket extends Socket {
     userId?: string;

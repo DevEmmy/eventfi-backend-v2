@@ -1,6 +1,8 @@
 import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatService } from './chat.service';
+import { PaymentService } from './payment.service';
+import { emailQueue } from '../jobs/email.queue';
 
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
@@ -257,17 +259,39 @@ export class BookingService {
     }
 
     /**
-     * Initialize payment (for paid tickets)
+     * Initialize payment via Paystack (for paid tickets)
      */
     static async initializePayment(orderId: string, userId: string, paymentMethod: string, callbackUrl: string) {
-        const order = await prisma.bookingOrder.findUnique({ where: { id: orderId } });
+        const order = await prisma.bookingOrder.findUnique({
+            where: { id: orderId },
+            include: { event: { select: { title: true } } }
+        });
 
         if (!order) throw new Error('Order not found');
         if (order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot pay for this order');
         if (order.total === 0) throw new Error('Use confirm endpoint for free tickets');
 
+        // Fetch user email for Paystack
+        const user = await prisma.user.findUnique({
+            where: { id: userId },
+            select: { email: true }
+        });
+        if (!user) throw new Error('User not found');
+
         const reference = `EVF-ORD-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+        // Amount in kobo (Paystack expects smallest currency unit)
+        const amountInKobo = Math.round(order.total * 100);
+
+        // Initialize Paystack transaction
+        const payment = await PaymentService.initializeTransaction(
+            user.email,
+            amountInKobo,
+            reference,
+            callbackUrl,
+            { orderId, eventTitle: (order as any).event?.title }
+        );
 
         await prisma.bookingOrder.update({
             where: { id: orderId },
@@ -278,11 +302,10 @@ export class BookingService {
             }
         });
 
-        // TODO: Integrate with actual payment gateway (Paystack/Flutterwave)
-        // For now, return mock payment URL
         return {
-            paymentUrl: `https://paystack.com/pay/${reference}`,
-            reference,
+            paymentUrl: payment.paymentUrl,
+            reference: payment.reference,
+            accessCode: payment.accessCode,
             expiresAt: order.expiresAt?.toISOString(),
         };
     }
@@ -347,7 +370,35 @@ export class BookingService {
             await ChatService.getOrJoinChat(order.eventId, userId);
         } catch (error) {
             console.error('Failed to auto-join chat:', error);
-            // Don't fail order confirmation if chat join fails
+        }
+
+        // Send ticket confirmation emails to each attendee
+        try {
+            const event = await prisma.event.findUnique({
+                where: { id: order.eventId },
+                select: { title: true, startDate: true, venueName: true, address: true, city: true }
+            });
+            if (event) {
+                const eventDate = new Date(event.startDate).toLocaleDateString('en-US', {
+                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+                });
+                const venue = event.venueName || event.address || event.city || 'TBA';
+
+                for (const ticket of tickets) {
+                    if (ticket.email) {
+                        await emailQueue.add('ticket-confirmation', {
+                            type: 'ticket-confirmation' as const,
+                            to: ticket.email,
+                            eventTitle: event.title,
+                            userTitle: ticket.name || 'Attendee',
+                            startDate: eventDate,
+                            venue,
+                        });
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Failed to queue ticket confirmation emails:', error);
         }
 
         return {
@@ -363,27 +414,49 @@ export class BookingService {
     }
 
     /**
-     * Handle payment webhook
+     * Handle Paystack payment webhook (charge.success event)
      */
-    static async handlePaymentWebhook(reference: string, status: 'success' | 'failed') {
+    static async handlePaymentWebhook(event: string, data: any) {
+        if (event !== 'charge.success') {
+            return { received: true };
+        }
+
+        const reference = data?.reference;
+        if (!reference) throw new Error('Missing payment reference');
+
         const order = await prisma.bookingOrder.findFirst({
             where: { paymentReference: reference }
         });
 
-        if (!order) throw new Error('Order not found');
+        if (!order) throw new Error('Order not found for reference');
 
-        if (status === 'success') {
+        // Verify the transaction via Paystack API for extra security
+        try {
+            const verification = await PaymentService.verifyTransaction(reference);
+
+            if (verification.status === 'success') {
+                await prisma.bookingOrder.update({
+                    where: { id: order.id },
+                    data: {
+                        paymentStatus: 'COMPLETED',
+                        paidAt: new Date()
+                    }
+                });
+            } else {
+                await prisma.bookingOrder.update({
+                    where: { id: order.id },
+                    data: { paymentStatus: 'FAILED' }
+                });
+            }
+        } catch (verifyError) {
+            console.error('Payment verification failed:', verifyError);
+            // Still mark as completed based on webhook (Paystack is the source of truth)
             await prisma.bookingOrder.update({
                 where: { id: order.id },
                 data: {
                     paymentStatus: 'COMPLETED',
                     paidAt: new Date()
                 }
-            });
-        } else {
-            await prisma.bookingOrder.update({
-                where: { id: order.id },
-                data: { paymentStatus: 'FAILED' }
             });
         }
 

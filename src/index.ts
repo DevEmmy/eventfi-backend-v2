@@ -7,9 +7,9 @@ import {
   disconnectDatabase,
 } from './v1/config/database';
 import { initializeChatSocket } from './v1/websocket/chat.socket';
-// import { connectRedis, disconnectRedis } from './v1/config/redis';
-// import { emailWorker } from './v1/jobs/email.worker';
-// import { emailQueue } from './v1/jobs/email.queue';
+import { connectRedis, disconnectRedis } from './v1/config/redis';
+import { emailWorker } from './v1/jobs/email.worker';
+import { emailQueue } from './v1/jobs/email.queue';
 
 const DEFAULT_PORT = 8000;
 
@@ -81,10 +81,10 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
 
     const finalize = async () => {
       try {
-        // await disconnectRedis();
-        // await emailWorker.close();
-        // await emailQueue.close();
-        // console.log('Email worker and queue closed');
+        await emailWorker.close();
+        await emailQueue.close();
+        console.log('Email worker and queue closed');
+        await disconnectRedis();
       } catch (redisError) {
         console.error('Error while disconnecting Redis/Queue', redisError);
       }
@@ -104,7 +104,8 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
 
 const bootstrap = async () => {
   try {
-    await Promise.all([connectDatabase()]);
+    await Promise.all([connectDatabase(), connectRedis()]);
+    console.log('📧 Email queue and worker initialized');
     server.listen(port);
   } catch (error) {
     console.error('Failed to bootstrap services', error);

@@ -6,6 +6,8 @@ import bookingRoutes from './booking.routes';
 import ticketRoutes from './ticket.routes';
 import manageRoutes from './manage.routes';
 import chatRoutes from './chat.routes';
+import notificationRoutes from './notification.routes';
+import vendorRoutes from './vendor.routes';
 import { BookingController } from '../controllers/booking.controller';
 import { ManageController } from '../controllers/manage.controller';
 import { ChatController } from '../controllers/chat.controller';
@@ -24,6 +26,12 @@ router.use('/events', manageRoutes);
 
 // Chat routes (under /events for REST compliance)
 router.use('/events', chatRoutes);
+
+// Notification routes
+router.use('/notifications', notificationRoutes);
+
+// Vendor/Marketplace routes
+router.use('/vendors', vendorRoutes);
 
 // User search (for team member addition)
 router.get('/users/search', ManageController.searchUsers);

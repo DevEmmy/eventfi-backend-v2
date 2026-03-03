@@ -11,6 +11,7 @@ router.get('/me/events', authenticate, UserController.getMyEvents);
 router.get('/me/tickets', authenticate, BookingController.getUserTickets);
 router.get('/me/orders', authenticate, BookingController.getUserOrders);
 router.get('/me/favorites', authenticate, UserController.getMyFavorites);
+router.get('/me/dashboard', authenticate, UserController.getOrganizerDashboard);
 
 // Settings routes
 router.get('/me/settings', authenticate, SettingsController.getSettings);

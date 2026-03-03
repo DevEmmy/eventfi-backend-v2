@@ -74,6 +74,26 @@ export class UserController {
     }
 
     /**
+     * GET /users/me/dashboard - Get organizer dashboard data
+     */
+    static async getOrganizerDashboard(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const result = await UserService.getOrganizerDashboard(userId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result,
+            });
+        } catch (error: any) {
+            return res.status(500).json({
+                status: 'error',
+                message: error.message || 'Failed to fetch dashboard data',
+            });
+        }
+    }
+
+    /**
      * GET /users/:username - Get public user profile
      */
     static async getPublicProfile(req: Request, res: Response) {

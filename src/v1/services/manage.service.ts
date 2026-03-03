@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { EmailService } from './email.service';
+import { emailQueue } from '../jobs/email.queue';
 
 interface TeamPermissions {
     canEdit: boolean;
@@ -420,10 +421,34 @@ export class ManageService {
             }
         }
 
-        // TODO: Send notification emails to attendees
-        const attendeesNotified = notifyAttendees
-            ? orders.reduce((sum: number, o) => sum + o.attendees.length, 0)
-            : 0;
+        // Send notification emails to attendees via queue
+        let attendeesNotified = 0;
+        if (notifyAttendees) {
+            const eventDate = event.startDate
+                ? new Date(event.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                : 'TBA';
+
+            const attendeeEmails = new Set<string>();
+            for (const order of orders) {
+                for (const attendee of order.attendees) {
+                    if (attendee.email) {
+                        attendeeEmails.add(attendee.email);
+                    }
+                }
+            }
+
+            for (const email of attendeeEmails) {
+                await emailQueue.add('event-cancellation', {
+                    type: 'event-cancellation' as const,
+                    to: email,
+                    eventTitle: event.title,
+                    eventDate,
+                    reason,
+                    refundPolicy,
+                });
+            }
+            attendeesNotified = attendeeEmails.size;
+        }
 
         return {
             status: 'CANCELLED',

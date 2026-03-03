@@ -218,6 +218,84 @@ export class UserService {
     }
 
     /**
+     * Get organizer dashboard aggregate stats
+     */
+    static async getOrganizerDashboard(userId: string) {
+        const now = new Date();
+
+        const events = await prisma.event.findMany({
+            where: { organizerId: userId },
+            include: { tickets: true },
+        });
+
+        const totalEvents = events.length;
+        const upcomingEvents = events.filter(e => new Date(e.startDate) > now).length;
+        const eventIds = events.map(e => e.id);
+
+        const [confirmedOrders, recentNotifications] = await prisma.$transaction([
+            prisma.bookingOrder.findMany({
+                where: { eventId: { in: eventIds }, status: 'CONFIRMED' },
+                select: { total: true, eventId: true, createdAt: true },
+            }),
+            prisma.notification.findMany({
+                where: { userId },
+                orderBy: { createdAt: 'desc' },
+                take: 5,
+            }),
+        ]);
+
+        const totalRevenue = confirmedOrders.reduce((sum, o) => sum + o.total, 0);
+        const totalTicketsSold = events.reduce((sum, e) => {
+            return sum + e.tickets.reduce((tSum, t) => tSum + (t.quantity - t.remaining), 0);
+        }, 0);
+
+        const totalAttendees = eventIds.length > 0
+            ? await prisma.attendee.count({
+                where: { order: { eventId: { in: eventIds }, status: 'CONFIRMED' } },
+            })
+            : 0;
+
+        const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+        const eventsThisMonth = events.filter(e => new Date(e.createdAt) >= monthStart).length;
+
+        return {
+            stats: {
+                totalEvents,
+                upcomingEvents,
+                totalAttendees,
+                totalRevenue,
+                totalTicketsSold,
+                eventsThisMonth,
+            },
+            recentActivity: recentNotifications.map(n => ({
+                id: n.id,
+                type: n.type.toLowerCase(),
+                message: n.title + ': ' + n.message,
+                time: n.createdAt.toISOString(),
+            })),
+            upcomingEventsList: events
+                .filter(e => new Date(e.startDate) > now)
+                .sort((a, b) => new Date(a.startDate).getTime() - new Date(b.startDate).getTime())
+                .slice(0, 6)
+                .map(e => ({
+                    id: e.id,
+                    title: e.title,
+                    startDate: e.startDate.toISOString(),
+                    endDate: e.endDate.toISOString(),
+                    coverImage: e.coverImage,
+                    venueName: e.venueName,
+                    city: e.city,
+                    status: e.status,
+                    attendeesCount: e.attendeesCount,
+                    ticketsSold: e.tickets.reduce((sum, t) => sum + (t.quantity - t.remaining), 0),
+                    revenue: confirmedOrders
+                        .filter(o => o.eventId === e.id)
+                        .reduce((sum, o) => sum + o.total, 0),
+                })),
+        };
+    }
+
+    /**
      * Follow a user
      */
     static async followUser(followerId: string, followingId: string) {

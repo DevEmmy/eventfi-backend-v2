@@ -14,7 +14,7 @@ const connection = redisUrl
     };
 
 interface EmailJobData {
-    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement';
+    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification';
     to: string;
     [key: string]: any;
 }
@@ -28,13 +28,67 @@ export const emailWorker = new Worker<EmailJobData>(
 
         try {
             switch (type) {
-                case 'password-reset':
-                    const { resetUrl } = data;
-                    const resetTemplate = EmailTemplates.passwordReset(resetUrl);
-                    await EmailService.send(to, resetTemplate.subject, resetTemplate.html, resetTemplate.text);
+                case 'welcome': {
+                    const template = EmailTemplates.welcome(data.name);
+                    await EmailService.send(to, template.subject, template.html, template.text);
                     break;
+                }
 
-                // We can add other types here as we migrate them
+                case 'password-reset': {
+                    const template = EmailTemplates.passwordReset(data.resetUrl);
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'ticket-confirmation': {
+                    const template = EmailTemplates.ticketConfirmation({
+                        eventTitle: data.eventTitle,
+                        userTitle: data.userTitle,
+                        qrCodeUrl: data.qrCodeUrl,
+                        startDate: data.startDate,
+                        venue: data.venue,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'announcement': {
+                    const template = EmailTemplates.announcement({
+                        eventTitle: data.eventTitle,
+                        subject: data.subject,
+                        content: data.content,
+                        organizerName: data.organizerName,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'team-invitation': {
+                    const template = EmailTemplates.teamInvitation({
+                        eventTitle: data.eventTitle,
+                        role: data.role,
+                        inviteUrl: data.inviteUrl,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'event-cancellation': {
+                    const template = EmailTemplates.eventCancellation({
+                        eventTitle: data.eventTitle,
+                        eventDate: data.eventDate,
+                        reason: data.reason,
+                        refundPolicy: data.refundPolicy,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'email-verification': {
+                    const template = EmailTemplates.emailVerification(data.verifyUrl);
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
 
                 default:
                     console.warn(`[EmailWorker] Unknown job type: ${type}`);
@@ -48,10 +102,10 @@ export const emailWorker = new Worker<EmailJobData>(
     },
     {
         connection: redisUrl ? new URL(redisUrl) as any : connection,
-        concurrency: 5, // Process up to 5 emails concurrently
+        concurrency: 5,
         limiter: {
-            max: 10, // Max 10 jobs
-            duration: 1000, // per 1 second (rate limiting email sending if needed)
+            max: 10,
+            duration: 1000,
         }
     }
 );

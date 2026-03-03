@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { BookingService } from '../services/booking.service';
+import { PaymentService } from '../services/payment.service';
 
 export class BookingController {
     /**
@@ -180,21 +181,31 @@ export class BookingController {
     }
 
     /**
-     * POST /webhooks/payment - Payment gateway webhook
+     * POST /webhooks/payment - Paystack payment webhook
+     * Verifies HMAC SHA512 signature before processing
      */
     static async paymentWebhook(req: Request, res: Response) {
         try {
-            // TODO: Verify webhook signature from payment provider
-            const { reference, status } = req.body;
+            // Verify Paystack webhook signature
+            const signature = req.headers['x-paystack-signature'] as string;
+            if (!signature) {
+                return res.status(401).json({ status: 'error', message: 'Missing webhook signature' });
+            }
 
-            const result = await BookingService.handlePaymentWebhook(reference, status);
+            const rawBody = JSON.stringify(req.body);
+            const isValid = PaymentService.verifyWebhookSignature(rawBody, signature);
+            if (!isValid) {
+                return res.status(401).json({ status: 'error', message: 'Invalid webhook signature' });
+            }
+
+            const { event, data } = req.body;
+            const result = await BookingService.handlePaymentWebhook(event, data);
 
             return res.status(200).json(result);
         } catch (error: any) {
-            return res.status(400).json({
-                status: 'error',
-                message: error.message || 'Webhook processing failed',
-            });
+            // Always return 200 to Paystack to prevent retries on app errors
+            console.error('Webhook processing error:', error.message);
+            return res.status(200).json({ received: true });
         }
     }
 
