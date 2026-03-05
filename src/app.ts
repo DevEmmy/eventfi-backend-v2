@@ -6,6 +6,9 @@ import cors from 'cors';
 
 const app = express();
 
+// Trust proxy (required behind reverse proxies like Render, Railway, etc.)
+app.set('trust proxy', 1);
+
 // Security headers
 app.use(helmet());
 
