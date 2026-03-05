@@ -2,7 +2,8 @@ import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatService } from './chat.service';
 import { PaymentService } from './payment.service';
-import { emailQueue } from '../jobs/email.queue';
+import { EmailService } from './email.service';
+import { EmailTemplates } from '../utils/email.templates';
 
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
@@ -386,14 +387,15 @@ export class BookingService {
 
                 for (const ticket of tickets) {
                     if (ticket.email) {
-                        await emailQueue.add('ticket-confirmation', {
-                            type: 'ticket-confirmation' as const,
-                            to: ticket.email,
+                        const template = EmailTemplates.ticketConfirmation({
                             eventTitle: event.title,
                             userTitle: ticket.name || 'Attendee',
                             startDate: eventDate,
                             venue,
                         });
+                        EmailService.send(ticket.email, template.subject, template.html, template.text).catch(err =>
+                            console.error('Failed to send ticket confirmation email:', err)
+                        );
                     }
                 }
             }

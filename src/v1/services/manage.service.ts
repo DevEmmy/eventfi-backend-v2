@@ -1,6 +1,6 @@
 import { prisma } from '../config/database';
 import { EmailService } from './email.service';
-import { emailQueue } from '../jobs/email.queue';
+import { EmailTemplates } from '../utils/email.templates';
 
 interface TeamPermissions {
     canEdit: boolean;
@@ -438,14 +438,15 @@ export class ManageService {
             }
 
             for (const email of attendeeEmails) {
-                await emailQueue.add('event-cancellation', {
-                    type: 'event-cancellation' as const,
-                    to: email,
+                const template = EmailTemplates.eventCancellation({
                     eventTitle: event.title,
                     eventDate,
                     reason,
                     refundPolicy,
                 });
+                EmailService.send(email, template.subject, template.html, template.text).catch(err =>
+                    console.error('Failed to send cancellation email:', err)
+                );
             }
             attendeesNotified = attendeeEmails.size;
         }

@@ -3,7 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/database';
 import { EmailService } from './email.service';
-import { emailQueue } from '../jobs/email.queue';
+import { EmailTemplates } from '../utils/email.templates';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
 if (!process.env.JWT_SECRET) {
@@ -45,14 +45,13 @@ export class AuthService {
             { expiresIn: JWT_EXPIRES_IN as any }
         );
 
-        // Send verification email via queue
+        // Send verification email directly
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
-        await emailQueue.add('email-verification', {
-            type: 'email-verification' as const,
-            to: user.email,
-            verifyUrl,
-        });
+        const template = EmailTemplates.emailVerification(verifyUrl);
+        EmailService.send(user.email, template.subject, template.html, template.text).catch(err =>
+            console.error('Failed to send verification email:', err)
+        );
 
         return {
             user: {
@@ -334,11 +333,10 @@ export class AuthService {
         });
 
         // Send welcome email now that they're verified
-        await emailQueue.add('welcome', {
-            type: 'welcome' as const,
-            to: user.email,
-            name: user.displayName || user.email.split('@')[0],
-        });
+        const welcomeTemplate = EmailTemplates.welcome(user.displayName || user.email.split('@')[0]);
+        EmailService.send(user.email, welcomeTemplate.subject, welcomeTemplate.html, welcomeTemplate.text).catch(err =>
+            console.error('Failed to send welcome email:', err)
+        );
 
         return { message: 'Email verified successfully' };
     }
@@ -367,11 +365,10 @@ export class AuthService {
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
-        await emailQueue.add('email-verification', {
-            type: 'email-verification' as const,
-            to: user.email,
-            verifyUrl,
-        });
+        const resendTemplate = EmailTemplates.emailVerification(verifyUrl);
+        EmailService.send(user.email, resendTemplate.subject, resendTemplate.html, resendTemplate.text).catch(err =>
+            console.error('Failed to send verification email:', err)
+        );
 
         return { message: 'Verification email sent' };
     }
