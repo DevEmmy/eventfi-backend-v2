@@ -45,6 +45,12 @@ export interface CreateEventInput {
         salesStart?: string;
         salesEnd?: string;
     }[];
+    scheduleItems?: {
+        time: string;
+        activity: string;
+        description?: string;
+        order?: number;
+    }[];
 }
 
 export class EventService {
@@ -98,13 +104,24 @@ export class EventService {
                     salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
                     salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
                 }))
-            }
+            },
+            ...(data.scheduleItems && data.scheduleItems.length > 0 && {
+                scheduleItems: {
+                    create: data.scheduleItems.map((item, index) => ({
+                        time: item.time,
+                        activity: item.activity,
+                        description: item.description || null,
+                        order: item.order ?? index,
+                    }))
+                }
+            })
         };
 
         const event = await prisma.event.create({
             data: eventData,
             include: {
                 tickets: true,
+                scheduleItems: { orderBy: { order: 'asc' } },
                 organizer: {
                     select: {
                         id: true,
@@ -272,11 +289,28 @@ export class EventService {
             }),
         };
 
+        // Handle schedule items: delete old ones and create new ones
+        if (data.scheduleItems) {
+            await prisma.scheduleItem.deleteMany({ where: { eventId: id } });
+            if (data.scheduleItems.length > 0) {
+                await prisma.scheduleItem.createMany({
+                    data: data.scheduleItems.map((item, index) => ({
+                        eventId: id,
+                        time: item.time,
+                        activity: item.activity,
+                        description: item.description || null,
+                        order: item.order ?? index,
+                    }))
+                });
+            }
+        }
+
         const updatedEvent = await prisma.event.update({
             where: { id },
             data: updateData,
             include: {
                 tickets: true,
+                scheduleItems: { orderBy: { order: 'asc' } },
                 organizer: {
                     select: {
                         id: true,
