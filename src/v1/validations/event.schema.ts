@@ -42,6 +42,13 @@ const mediaSchema = z.object({
     videoUrl: z.string().url().optional().or(z.literal('')),
 });
 
+const scheduleItemSchema = z.object({
+    time: z.string().min(1, 'Time is required'),
+    activity: z.string().min(1, 'Activity is required'),
+    description: z.string().optional(),
+    order: z.number().int().optional(),
+});
+
 export const createEventSchema = z.object({
     title: z.string().min(1, 'Title is required').max(200),
     description: z.string().min(1, 'Description is required').max(5000),
@@ -55,6 +62,7 @@ export const createEventSchema = z.object({
     schedule: scheduleSchema,
     tickets: z.array(ticketSchema).min(1, 'At least one ticket type is required'),
     media: mediaSchema.optional(),
+    scheduleItems: z.array(scheduleItemSchema).optional(),
 });
 
 export const updateEventSchema = createEventSchema.partial();
