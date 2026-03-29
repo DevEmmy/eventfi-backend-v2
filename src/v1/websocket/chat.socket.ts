@@ -189,6 +189,47 @@ export function initializeChatSocket(httpServer: HttpServer) {
             await ChatService.updateLastSeen(socket.eventId, socket.userId!);
         });
 
+        // ===== GAME / ACTIVITY EVENTS =====
+
+        // Organizer starts an activity - broadcast to all in event room
+        socket.on('activity:start', async (data: { eventId: string; activityId: string; type: string }) => {
+            const room = `chat:${data.eventId}`;
+            io.to(room).emit('activity:started', {
+                activityId: data.activityId,
+                type: data.type,
+                startedBy: socket.userId
+            });
+        });
+
+        // Organizer broadcasts draw result to all
+        socket.on('activity:broadcast_draw', (data: { eventId: string; activityId: string; winners: any[]; totalPool: number }) => {
+            const room = `chat:${data.eventId}`;
+            io.to(room).emit('activity:draw_result', {
+                activityId: data.activityId,
+                winners: data.winners,
+                totalPool: data.totalPool
+            });
+        });
+
+        // Attendee taps applause - broadcast updated count to room
+        socket.on('activity:tap', (data: { eventId: string; activityId: string; totalTaps: number; participantCount: number }) => {
+            const room = `chat:${data.eventId}`;
+            io.to(room).emit('activity:tap_update', {
+                activityId: data.activityId,
+                totalTaps: data.totalTaps,
+                participantCount: data.participantCount
+            });
+        });
+
+        // Organizer ends activity
+        socket.on('activity:end', (data: { eventId: string; activityId: string; results: any }) => {
+            const room = `chat:${data.eventId}`;
+            io.to(room).emit('activity:ended', {
+                activityId: data.activityId,
+                results: data.results
+            });
+        });
+
         /**
          * Disconnect handling
          */

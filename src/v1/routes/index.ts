@@ -6,6 +6,7 @@ import bookingRoutes from './booking.routes';
 import ticketRoutes from './ticket.routes';
 import manageRoutes from './manage.routes';
 import chatRoutes from './chat.routes';
+import activityRoutes from './activity.routes';
 import notificationRoutes from './notification.routes';
 import vendorRoutes from './vendor.routes';
 import { BookingController } from '../controllers/booking.controller';
@@ -26,6 +27,9 @@ router.use('/events', manageRoutes);
 
 // Chat routes (under /events for REST compliance)
 router.use('/events', chatRoutes);
+
+// Activity / Game routes (under /events for REST compliance)
+router.use('/events', activityRoutes);
 
 // Notification routes
 router.use('/notifications', notificationRoutes);

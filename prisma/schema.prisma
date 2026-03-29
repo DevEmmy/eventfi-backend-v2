@@ -188,6 +188,7 @@ model Event {
   orders        BookingOrder[]
   teamMembers   EventTeamMember[]
   chat          EventChat?
+  activities    EventActivity[]
 
   // Metadata
   isFeatured     Boolean  @default(false)
@@ -580,4 +581,44 @@ model VendorBooking {
 
   @@index([vendorId, status])
   @@index([userId])
+}
+
+// ==================== EVENT ACTIVITIES / GAMES ====================
+
+enum ActivityType {
+  LUCKY_DRAW
+  APPLAUSE_METER
+}
+
+enum ActivityStatus {
+  IDLE
+  ACTIVE
+  ENDED
+}
+
+model EventActivity {
+  id        String         @id @default(uuid()) @db.Uuid
+  eventId   String         @db.Uuid
+  event     Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  type      ActivityType
+  status    ActivityStatus @default(IDLE)
+  config    Json           @default("{}")  // type-specific config (e.g. winnersCount for lucky draw)
+  results   Json?          // computed results after ending
+  createdBy String         @db.Uuid        // organizer userId
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  entries   ActivityEntry[]
+}
+
+model ActivityEntry {
+  id         String        @id @default(uuid()) @db.Uuid
+  activityId String        @db.Uuid
+  activity   EventActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  userId     String        @db.Uuid
+  response   Json          @default("{}")  // e.g. { taps: 5 } for applause
+  createdAt  DateTime      @default(now())
+
+  @@unique([activityId, userId])
+  @@index([activityId])
 }
