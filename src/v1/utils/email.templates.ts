@@ -158,6 +158,28 @@ export const EmailTemplates = {
     }),
 
     /**
+     * Team Added Notification (for existing users added to a team)
+     */
+    teamAdded: (data: { eventTitle: string, role: string, eventUrl: string }) => ({
+        subject: `You've been added to the team for ${data.eventTitle}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">You're on the Team!</h2>
+                <p>You've been added to the team for <strong>${data.eventTitle}</strong> as a <strong>${data.role}</strong>.</p>
+                <p>You can now manage this event from your dashboard.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${data.eventUrl}"
+                       style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       View Event
+                    </a>
+                </div>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `You've been added to the team for ${data.eventTitle} as a ${data.role}. View the event at: ${data.eventUrl}`
+    }),
+
+    /**
      * General Announcement (Organizer to Attendees)
      */
     announcement: (data: { eventTitle: string, subject: string, content: string, organizerName: string }) => ({

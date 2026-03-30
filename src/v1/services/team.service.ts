@@ -138,6 +138,18 @@ export class TeamService {
                 console.error('Failed to send team invitation email:', err)
             );
             invitationSent = true;
+        } else if (targetUser) {
+            const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+            const eventUrl = `${frontendUrl}/events/${eventId}/manage`;
+            const template = EmailTemplates.teamAdded({
+                eventTitle: event?.title || 'Event',
+                role: role.replace('_', ' ').toLowerCase(),
+                eventUrl,
+            });
+            EmailService.send(targetUser.email, template.subject, template.html, template.text).catch(err =>
+                console.error('Failed to send team added email:', err)
+            );
+            invitationSent = true;
         }
 
         return {
