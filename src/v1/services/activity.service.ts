@@ -110,38 +110,61 @@ export class ActivityService {
         return { winners, totalPool: orders.length, activity: updated };
     }
 
-    // Record an applause tap from an attendee
+    // Record an applause tap from an attendee — returns totals + top-5 leaderboard
     static async tap(activityId: string, userId: string) {
-        const activity = await prisma.eventActivity.findUnique({ where: { id: activityId } });
+        const activity = await prisma.eventActivity.findUnique({
+            where: { id: activityId },
+            include: { event: false }
+        });
         if (!activity) throw new Error('Activity not found');
         if (activity.type !== ActivityType.APPLAUSE_METER) throw new Error('Not an applause meter');
         if (activity.status !== ActivityStatus.ACTIVE) throw new Error('Activity not active');
 
-        // Upsert entry - increment taps
+        // Upsert entry — increment tap count for this user
         const existing = await prisma.activityEntry.findUnique({
             where: { activityId_userId: { activityId, userId } }
         });
 
+        let myTaps: number;
         if (existing) {
             const resp = existing.response as any;
+            myTaps = (resp?.taps || 1) + 1;
             await prisma.activityEntry.update({
                 where: { id: existing.id },
-                data: { response: { taps: (resp?.taps || 1) + 1 } }
+                data: { response: { taps: myTaps } }
             });
         } else {
+            myTaps = 1;
             await prisma.activityEntry.create({
                 data: { activityId, userId, response: { taps: 1 } }
             });
         }
 
-        // Get total count
-        const entries = await prisma.activityEntry.findMany({ where: { activityId } });
+        // Fetch all entries with user info for leaderboard
+        const entries = await prisma.activityEntry.findMany({
+            where: { activityId },
+            include: {
+                user: { select: { id: true, displayName: true, username: true, avatar: true } }
+            }
+        });
+
         const totalTaps = entries.reduce((sum, e) => {
             const r = e.response as any;
             return sum + (r?.taps || 1);
         }, 0);
 
-        return { totalTaps, participantCount: entries.length };
+        // Top-5 sorted by taps descending
+        const leaderboard = entries
+            .map(e => ({
+                userId: e.userId,
+                name: e.user.displayName || e.user.username || 'User',
+                avatar: e.user.avatar,
+                taps: (e.response as any)?.taps || 1,
+            }))
+            .sort((a, b) => b.taps - a.taps)
+            .slice(0, 5);
+
+        return { totalTaps, participantCount: entries.length, myTaps, leaderboard };
     }
 
     // Get activity by id

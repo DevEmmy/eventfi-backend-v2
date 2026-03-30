@@ -206,12 +206,25 @@ export function initializeChatSocket(httpServer: HttpServer) {
         };
 
         // Organizer starts an activity - broadcast to all in event room
-        socket.on('activity:start', async (data: { eventId: string; activityId: string; type: string }) => {
+        socket.on('activity:start', async (data: { eventId: string; activityId: string; type: string; durationSeconds?: number }) => {
             emitToEvent(data.eventId, 'activity:started', {
                 activityId: data.activityId,
                 type: data.type,
-                startedBy: socket.userId
+                startedBy: socket.userId,
+                durationSeconds: data.durationSeconds ?? null,
+                startedAt: Date.now(),
             });
+
+            // Auto-end Applause Meter when the time window expires
+            if (data.type === 'APPLAUSE_METER' && data.durationSeconds && data.durationSeconds > 0) {
+                setTimeout(() => {
+                    emitToEvent(data.eventId, 'activity:ended', {
+                        activityId: data.activityId,
+                        results: null,
+                        autoEnded: true,
+                    });
+                }, data.durationSeconds * 1000);
+            }
         });
 
         // Organizer broadcasts draw countdown then result
@@ -231,12 +244,13 @@ export function initializeChatSocket(httpServer: HttpServer) {
             }, 10000);
         });
 
-        // Attendee taps applause - broadcast updated count to room
-        socket.on('activity:tap', (data: { eventId: string; activityId: string; totalTaps: number; participantCount: number }) => {
+        // Attendee taps applause - broadcast updated count + leaderboard to room
+        socket.on('activity:tap', (data: { eventId: string; activityId: string; totalTaps: number; participantCount: number; leaderboard?: any[] }) => {
             emitToEvent(data.eventId, 'activity:tap_update', {
                 activityId: data.activityId,
                 totalTaps: data.totalTaps,
-                participantCount: data.participantCount
+                participantCount: data.participantCount,
+                leaderboard: data.leaderboard ?? [],
             });
         });
 
