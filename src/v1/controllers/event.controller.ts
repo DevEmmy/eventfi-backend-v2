@@ -147,4 +147,20 @@ export class EventController {
             });
         }
     }
+
+    static async findBySlug(req: Request, res: Response) {
+        try {
+            const { slug } = req.params;
+            const event = await EventService.findBySlug(slug);
+            return res.status(200).json({
+                status: 'success',
+                data: event,
+            });
+        } catch (error: any) {
+            return res.status(404).json({
+                status: 'error',
+                message: error.message || 'Event not found',
+            });
+        }
+    }
 }

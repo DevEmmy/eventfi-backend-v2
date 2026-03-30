@@ -5,6 +5,7 @@ import { ChatService } from './chat.service';
 // Interfaces matching the user's request structure (for input)
 export interface CreateEventInput {
     title: string;
+    slug?: string;
     description: string;
     category: EventCategory;
     tags?: string[];
@@ -56,8 +57,12 @@ export interface CreateEventInput {
 export class EventService {
     static async create(userId: string, data: CreateEventInput) {
         // Map nested input to flattened schema
+        // Auto-generate slug from title if not provided
+        const slug = data.slug || data.title.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+
         const eventData: Prisma.EventCreateInput = {
             title: data.title,
+            slug,
             description: data.description,
             category: data.category,
             tags: data.tags || [],
@@ -250,8 +255,12 @@ export class EventService {
         if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
 
         // Construct update data
+        // Regenerate slug if title changes
+        const slug = data.title ? data.title.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : undefined;
+
         const updateData: Prisma.EventUpdateInput = {
             ...(data.title && { title: data.title }),
+            ...(slug && { slug }),
             ...(data.description && { description: data.description }),
             ...(data.category && { category: data.category }),
             ...(data.tags && { tags: data.tags }),
@@ -459,5 +468,31 @@ export class EventService {
         });
 
         return events;
+    }
+
+    /**
+     * Find an event by its short URL slug
+     */
+    static async findBySlug(slug: string) {
+        const event = await prisma.event.findFirst({
+            where: { slug: slug.toUpperCase() },
+            include: {
+                tickets: true,
+                scheduleItems: { orderBy: { order: 'asc' } },
+                organizer: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        avatar: true,
+                        username: true,
+                        email: true,
+                        isVerified: true
+                    }
+                }
+            }
+        });
+
+        if (!event) throw new Error('Event not found');
+        return event;
     }
 }

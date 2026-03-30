@@ -14,6 +14,7 @@ router.get('/', EventController.findAll);
 // Specific routes before parameterized routes
 router.get('/recommendations', authenticate, EventController.getRecommendations);
 router.get('/trending', EventController.getTrending);
+router.get('/slug/:slug', EventController.findBySlug);
 
 // Event detail routes
 router.get('/:id', EventController.findOne);

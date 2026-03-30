@@ -145,6 +145,7 @@ enum TeamMemberStatus {
 model Event {
   id               String        @id @default(uuid()) @db.Uuid
   title            String
+  slug             String?       @unique
   description      String
   shortDescription String?
   category         EventCategory

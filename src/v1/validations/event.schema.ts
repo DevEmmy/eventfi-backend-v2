@@ -51,6 +51,7 @@ const scheduleItemSchema = z.object({
 
 export const createEventSchema = z.object({
     title: z.string().min(1, 'Title is required').max(200),
+    slug: z.string().optional(),
     description: z.string().min(1, 'Description is required').max(5000),
     category: z.enum([
         'MUSIC', 'TECH', 'BUSINESS', 'ARTS', 'SPORTS',
