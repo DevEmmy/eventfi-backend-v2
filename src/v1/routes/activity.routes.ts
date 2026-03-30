@@ -10,6 +10,7 @@ router.get('/:id/activities/active', ActivityController.getActive);
 // Organizer only
 router.post('/:id/activities', authenticate, ActivityController.create);
 router.get('/:id/activities', authenticate, ActivityController.list);
+router.get('/:id/activities/:activityId', authenticate, ActivityController.getDetail);
 router.patch('/:id/activities/:activityId/start', authenticate, ActivityController.start);
 router.patch('/:id/activities/:activityId/end', authenticate, ActivityController.end);
 router.post('/:id/activities/:activityId/draw', authenticate, ActivityController.draw);

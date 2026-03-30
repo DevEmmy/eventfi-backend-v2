@@ -83,6 +83,18 @@ export class ActivityController {
         }
     }
 
+    // GET /events/:id/activities/:activityId
+    static async getDetail(req: Request, res: Response) {
+        try {
+            const { activityId } = req.params;
+            const detail = await ActivityService.getDetail(activityId);
+            if (!detail) return res.status(404).json({ status: 'error', message: 'Activity not found' });
+            res.json({ status: 'success', data: detail });
+        } catch (error: any) {
+            res.status(500).json({ status: 'error', message: error.message });
+        }
+    }
+
     // POST /events/:id/activities/:activityId/tap
     static async tap(req: Request, res: Response) {
         try {

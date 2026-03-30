@@ -167,7 +167,7 @@ export class ActivityService {
         return { totalTaps, participantCount: entries.length, myTaps, leaderboard };
     }
 
-    // Get activity by id
+    // Get activity by id (basic)
     static async getById(activityId: string) {
         return prisma.eventActivity.findUnique({
             where: { id: activityId },
@@ -175,11 +175,59 @@ export class ActivityService {
         });
     }
 
-    // Get all activities for an event
+    // Get enriched detail for history view — includes leaderboard built from entries
+    static async getDetail(activityId: string) {
+        const activity = await prisma.eventActivity.findUnique({
+            where: { id: activityId },
+            include: {
+                entries: {
+                    include: { user: { select: { id: true, displayName: true, username: true, avatar: true } } }
+                }
+            }
+        });
+        if (!activity) return null;
+
+        const base = {
+            id: activity.id,
+            eventId: activity.eventId,
+            type: activity.type,
+            status: activity.status,
+            config: activity.config,
+            results: activity.results,
+            createdBy: activity.createdBy,
+            createdAt: activity.createdAt,
+            updatedAt: activity.updatedAt,
+            participantCount: activity.entries.length,
+        };
+
+        if (activity.type === ActivityType.APPLAUSE_METER) {
+            const leaderboard = activity.entries
+                .map(e => ({
+                    userId: e.userId,
+                    name: e.user.displayName || e.user.username || 'User',
+                    avatar: e.user.avatar,
+                    username: e.user.username,
+                    taps: (e.response as any)?.taps || 1,
+                }))
+                .sort((a, b) => b.taps - a.taps);
+            const totalTaps = leaderboard.reduce((s, e) => s + e.taps, 0);
+            return { ...base, leaderboard, totalTaps };
+        }
+
+        if (activity.type === ActivityType.LUCKY_DRAW) {
+            const r = activity.results as any;
+            return { ...base, winners: r?.winners ?? [], totalPool: r?.totalPool ?? 0, drawnAt: r?.drawnAt ?? null };
+        }
+
+        return base;
+    }
+
+    // Get all activities for an event with participant counts
     static async getByEvent(eventId: string) {
         return prisma.eventActivity.findMany({
             where: { eventId },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            include: { _count: { select: { entries: true } } }
         });
     }
 
