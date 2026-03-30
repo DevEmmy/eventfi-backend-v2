@@ -1,5 +1,5 @@
 import { prisma } from '../config/database';
-import { ActivityType, ActivityStatus } from '@prisma/client';
+import { ActivityType, ActivityStatus, OrderStatus } from '@prisma/client';
 
 export class ActivityService {
     // Create a new activity for an event (organizer only)
@@ -81,33 +81,33 @@ export class ActivityService {
         const config = activity.config as any;
         const winnersCount = config?.winnersCount || 1;
 
-        // Get all registered attendees (users with tickets for this event)
-        const userTickets = await prisma.userTicket.findMany({
-            where: { eventId: activity.eventId, status: 'valid' },
+        // Get all registered attendees via confirmed booking orders
+        const orders = await prisma.bookingOrder.findMany({
+            where: { eventId: activity.eventId, status: OrderStatus.CONFIRMED },
             include: {
                 user: { select: { id: true, displayName: true, username: true, avatar: true, email: true } }
             },
             distinct: ['userId']
         });
 
-        if (userTickets.length === 0) throw new Error('No registered attendees');
+        if (orders.length === 0) throw new Error('No registered attendees');
 
         // Shuffle and pick winners
-        const shuffled = userTickets.sort(() => Math.random() - 0.5);
-        const winners = shuffled.slice(0, Math.min(winnersCount, shuffled.length)).map(ut => ({
-            userId: ut.user.id,
-            name: ut.user.displayName || ut.user.username || ut.user.email,
-            avatar: ut.user.avatar,
-            username: ut.user.username,
+        const shuffled = orders.sort(() => Math.random() - 0.5);
+        const winners = shuffled.slice(0, Math.min(winnersCount, shuffled.length)).map(o => ({
+            userId: o.user.id,
+            name: o.user.displayName || o.user.username || o.user.email,
+            avatar: o.user.avatar,
+            username: o.user.username,
         }));
 
         // Store results
         const updated = await prisma.eventActivity.update({
             where: { id: activityId },
-            data: { results: { winners, drawnAt: new Date().toISOString(), totalPool: userTickets.length } }
+            data: { results: { winners, drawnAt: new Date().toISOString(), totalPool: orders.length } }
         });
 
-        return { winners, totalPool: userTickets.length, activity: updated };
+        return { winners, totalPool: orders.length, activity: updated };
     }
 
     // Record an applause tap from an attendee
