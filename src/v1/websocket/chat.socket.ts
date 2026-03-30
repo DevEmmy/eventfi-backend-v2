@@ -218,10 +218,23 @@ export function initializeChatSocket(httpServer: HttpServer) {
 
             // Auto-end Applause Meter when the time window expires
             if (data.type === 'APPLAUSE_METER' && data.durationSeconds && data.durationSeconds > 0) {
-                setTimeout(() => {
+                setTimeout(async () => {
+                    try {
+                        // Compute final results from entries
+                        const entries = await prisma.activityEntry.findMany({
+                            where: { activityId: data.activityId },
+                        });
+                        const totalTaps = entries.reduce((s, e) => s + ((e.response as any)?.taps || 1), 0);
+                        await prisma.eventActivity.update({
+                            where: { id: data.activityId },
+                            data: {
+                                status: 'ENDED',
+                                results: { totalTaps, participantCount: entries.length },
+                            },
+                        });
+                    } catch { /* non-critical */ }
                     emitToEvent(data.eventId, 'activity:ended', {
                         activityId: data.activityId,
-                        results: null,
                         autoEnded: true,
                     });
                 }, data.durationSeconds * 1000);
