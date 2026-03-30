@@ -12,7 +12,7 @@ router.get('/:eventId/analytics', authenticate, ManageController.getAnalytics);
 router.get('/:eventId/attendees', authenticate, ManageController.getAttendees);
 router.post('/:eventId/attendees/:attendeeId/check-in', authenticate, ManageController.checkInAttendee);
 router.post('/:eventId/attendees/email', authenticate, ManageController.sendBulkEmail);
-// TODO: router.get('/:eventId/attendees/export', authenticate, ManageController.exportAttendees);
+router.get('/:eventId/attendees/export', authenticate, ManageController.exportAttendees);
 
 // Team management
 router.get('/:eventId/team', authenticate, ManageController.getTeamMembers);

@@ -263,6 +263,61 @@ export class ManageService {
     }
 
     /**
+     * Export attendees as CSV
+     */
+    static async exportAttendees(
+        eventId: string,
+        userId: string,
+        status?: string
+    ): Promise<string> {
+        await this.checkEventAccess(userId, eventId, 'canManageAttendees');
+
+        const where: any = {
+            order: { eventId, status: 'CONFIRMED' }
+        };
+        if (status === 'checked_in') where.checkedIn = true;
+        if (status === 'not_checked_in') where.checkedIn = false;
+
+        const attendees = await prisma.attendee.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            include: {
+                ticket: { select: { name: true, price: true } },
+                order: { select: { id: true } }
+            }
+        });
+
+        const escape = (val: any) => {
+            const str = val == null ? '' : String(val);
+            return str.includes(',') || str.includes('"') || str.includes('\n')
+                ? `"${str.replace(/"/g, '""')}"`
+                : str;
+        };
+
+        const headers = [
+            'Name', 'Email', 'Phone', 'City', 'Location', 'Ticket Type', 'Ticket Price',
+            'Ticket Code', 'Order ID', 'Check-in Status', 'Check-in Time', 'Purchase Date'
+        ];
+
+        const rows = attendees.map(a => [
+            escape(a.name),
+            escape(a.email),
+            escape(a.phone || ''),
+            escape((a as any).city || ''),
+            escape((a as any).location || ''),
+            escape(a.ticket.name),
+            escape(a.ticket.price),
+            escape(a.ticketCode),
+            escape(a.order.id),
+            escape(a.checkedIn ? 'Checked In' : 'Not Checked In'),
+            escape(a.checkedInAt ? a.checkedInAt.toISOString() : ''),
+            escape(a.createdAt.toISOString()),
+        ].join(','));
+
+        return [headers.join(','), ...rows].join('\n');
+    }
+
+    /**
      * Check-in attendee
      */
     static async checkInAttendee(

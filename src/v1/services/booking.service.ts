@@ -18,6 +18,8 @@ interface AttendeeInput {
     name: string;
     email: string;
     phone?: string;
+    city?: string;
+    location?: string;
 }
 
 export class BookingService {
@@ -202,6 +204,8 @@ export class BookingService {
             name: a.name,
             email: a.email,
             phone: a.phone,
+            city: a.city || null,
+            location: a.location || null,
             ticketCode: `EVF-TKT-${uuidv4().substring(0, 8).toUpperCase()}`,
         }));
 
@@ -341,6 +345,8 @@ export class BookingService {
                 name: a.name,
                 email: a.email,
                 phone: a.phone,
+                city: a.city || null,
+                location: a.location || null,
                 ticketCode: `EVF-TKT-${uuidv4().substring(0, 8).toUpperCase()}`,
             }));
 

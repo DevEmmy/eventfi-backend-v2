@@ -371,6 +371,8 @@ model Attendee {
   name          String
   email         String
   phone         String?
+  city          String?      // Attendee's city (for tracking)
+  location      String?      // Attendee's country/region (for tracking)
   ticketCode    String       @unique // Unique QR code content
   checkedIn     Boolean      @default(false)
   checkedInAt   DateTime?
