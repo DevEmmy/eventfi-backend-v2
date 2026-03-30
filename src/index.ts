@@ -7,6 +7,7 @@ import {
   disconnectDatabase,
 } from './v1/config/database';
 import { initializeChatSocket } from './v1/websocket/chat.socket';
+import { startReminderScheduler } from './v1/jobs/reminder.scheduler';
 // Redis & email queue disabled — no Redis instance available
 // import { connectRedis, disconnectRedis } from './v1/config/redis';
 // import { emailWorker } from './v1/jobs/email.worker';
@@ -98,6 +99,7 @@ const bootstrap = async () => {
   try {
     await connectDatabase();
     server.listen(port);
+    startReminderScheduler();
   } catch (error) {
     console.error('Failed to bootstrap services', error);
     process.exit(1);

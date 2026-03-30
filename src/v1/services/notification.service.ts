@@ -1,10 +1,31 @@
 import { prisma } from '../config/database';
 import { NotificationType } from '@prisma/client';
+import { getIO } from '../websocket/socket.instance';
 
 export class NotificationService {
     /**
      * Create a notification for a user
      */
+    private static pushToSocket(userId: string, notification: any) {
+        try {
+            const io = getIO();
+            if (io) {
+                io.to(`notification:${userId}`).emit('notification:new', {
+                    id: notification.id,
+                    type: notification.type.toLowerCase(),
+                    title: notification.title,
+                    message: notification.message,
+                    read: notification.read,
+                    actionUrl: notification.actionUrl,
+                    metadata: notification.metadata,
+                    createdAt: notification.createdAt.toISOString(),
+                });
+            }
+        } catch {
+            // Non-critical — DB write already succeeded
+        }
+    }
+
     static async create(data: {
         userId: string;
         type: NotificationType;
@@ -13,7 +34,7 @@ export class NotificationService {
         actionUrl?: string;
         metadata?: Record<string, any>;
     }) {
-        return prisma.notification.create({
+        const notification = await prisma.notification.create({
             data: {
                 userId: data.userId,
                 type: data.type,
@@ -23,6 +44,9 @@ export class NotificationService {
                 metadata: data.metadata || undefined,
             },
         });
+
+        this.pushToSocket(data.userId, notification);
+        return notification;
     }
 
     /**

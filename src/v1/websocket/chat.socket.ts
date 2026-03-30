@@ -3,6 +3,7 @@ import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ChatService } from '../services/chat.service';
 import { prisma } from '../config/database';
+import { setIO } from './socket.instance';
 
 if (!process.env.JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET environment variable is not set.');
@@ -36,6 +37,9 @@ export function initializeChatSocket(httpServer: HttpServer) {
         path: '/ws/chat'
     });
 
+    // Store the IO instance so NotificationService can use it for real-time pushes
+    setIO(io);
+
     // Authentication middleware
     io.use(async (socket: AuthenticatedSocket, next) => {
         try {
@@ -66,6 +70,9 @@ export function initializeChatSocket(httpServer: HttpServer) {
             userSockets.set(socket.userId!, new Set());
         }
         userSockets.get(socket.userId!)!.add(socket.id);
+
+        // Auto-join personal notification room for real-time pushes
+        socket.join(`notification:${socket.userId}`);
 
         /**
          * Join a chat room

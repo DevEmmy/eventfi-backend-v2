@@ -4,6 +4,7 @@ import { ChatService } from './chat.service';
 import { PaymentService } from './payment.service';
 import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
+import { NotificationService } from './notification.service';
 
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
@@ -377,6 +378,39 @@ export class BookingService {
             await ChatService.getOrJoinChat(order.eventId, userId);
         } catch (error) {
             console.error('Failed to auto-join chat:', error);
+        }
+
+        // In-app notifications: buyer confirmation + organizer ticket sale alert
+        try {
+            const eventForNotif = await prisma.event.findUnique({
+                where: { id: order.eventId },
+                select: { title: true, organizerId: true }
+            });
+            if (eventForNotif) {
+                const ticketCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+
+                // Notify the buyer
+                NotificationService.create({
+                    userId,
+                    type: 'TICKET_SALE',
+                    title: 'Booking Confirmed!',
+                    message: `Your ${ticketCount} ticket${ticketCount > 1 ? 's' : ''} for "${eventForNotif.title}" are confirmed. See you there!`,
+                    actionUrl: `/profile?tab=tickets`,
+                    metadata: { eventId: order.eventId, orderId: order.id, ticketCount },
+                }).catch(() => {});
+
+                // Notify the organizer
+                NotificationService.create({
+                    userId: eventForNotif.organizerId,
+                    type: 'TICKET_SALE',
+                    title: 'New Ticket Sale',
+                    message: `${ticketCount} ticket${ticketCount > 1 ? 's' : ''} sold for "${eventForNotif.title}".`,
+                    actionUrl: `/events/${order.eventId}/manage`,
+                    metadata: { eventId: order.eventId, orderId: order.id, ticketCount },
+                }).catch(() => {});
+            }
+        } catch (error) {
+            console.error('Failed to create booking notifications:', error);
         }
 
         // Send ticket confirmation emails to each attendee
