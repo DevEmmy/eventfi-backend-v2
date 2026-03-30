@@ -350,4 +350,27 @@ export class ManageController {
             });
         }
     }
+
+    /**
+     * POST /team/accept - Accept a team invitation via token
+     */
+    static async acceptTeamInvitation(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const { token } = req.body;
+
+            if (!token) {
+                return res.status(400).json({ status: 'error', message: 'Invitation token is required' });
+            }
+
+            const result = await TeamService.acceptInvitation(token, userId);
+
+            return res.status(200).json({ status: 'success', data: result });
+        } catch (error: any) {
+            return res.status(400).json({
+                status: 'error',
+                message: error.message || 'Failed to accept invitation'
+            });
+        }
+    }
 }

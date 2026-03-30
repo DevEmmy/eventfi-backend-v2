@@ -40,6 +40,9 @@ router.use('/vendors', vendorRoutes);
 // User search (for team member addition)
 router.get('/users/search', ManageController.searchUsers);
 
+// Team invitation acceptance
+router.post('/team/accept', authenticate, ManageController.acceptTeamInvitation);
+
 // User event chats
 router.get('/user/event-chats', authenticate, ChatController.getUserEventChats);
 

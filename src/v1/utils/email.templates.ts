@@ -40,7 +40,7 @@ export const EmailTemplates = {
                 <p>We're thrilled to have you join our community. EventFi is your go-to platform for discovering, creating, and managing amazing events.</p>
                 <p>Get started by exploring upcoming events or creating your own!</p>
                 <div style="margin: 30px 0;">
-                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/explore" 
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/explore-events"
                        style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                        Explore Events
                     </a>
@@ -49,7 +49,7 @@ export const EmailTemplates = {
                 <p>Stay awesome,<br>The EventFi Team</p>
             </div>
         `,
-        text: `Welcome to EventFi, ${name}! We're thrilled to have you join our community. Explore events at ${process.env.FRONTEND_URL || 'http://localhost:3000'}/explore`
+        text: `Welcome to EventFi, ${name}! We're thrilled to have you join our community. Explore events at ${process.env.FRONTEND_URL || 'http://localhost:3000'}/explore-events`
     }),
 
     /**
@@ -101,7 +101,7 @@ export const EmailTemplates = {
                 ` : ''}
 
                 <div style="margin: 30px 0; text-align: center;">
-                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/tickets" 
+                    <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=tickets"
                        style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
                        View My Tickets
                     </a>
@@ -111,7 +111,7 @@ export const EmailTemplates = {
                 <p>The EventFi Team</p>
             </div>
         `,
-        text: `Your ticket for ${data.eventTitle} is confirmed! Date: ${data.startDate}, Venue: ${data.venue}. View your tickets at ${process.env.FRONTEND_URL || 'http://localhost:3000'}/tickets`
+        text: `Your ticket for ${data.eventTitle} is confirmed! Date: ${data.startDate}, Venue: ${data.venue}. View your tickets at ${process.env.FRONTEND_URL || 'http://localhost:3000'}/profile?tab=tickets`
     }),
 
     /**
