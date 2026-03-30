@@ -33,6 +33,7 @@
     "ioredis": "^5.8.2",
     "jsonwebtoken": "^9.0.2",
     "nodemailer": "^7.0.13",
+    "openai": "^6.33.0",
     "paystack-sdk": "^3.6.1",
     "pg": "^8.17.2",
     "redis": "^5.9.0",
