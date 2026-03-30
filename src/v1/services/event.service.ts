@@ -182,8 +182,11 @@ export class EventService {
             ...(type && { locationType: type }),
             ...(organizerId && { organizerId }),
 
-            // Date filters
-            ...(startDate && { startDate: { gte: new Date(startDate) } }),
+            // Date filters — when browsing (no organizerId), only show upcoming/ongoing events
+            ...(startDate
+                ? { startDate: { gte: new Date(startDate) } }
+                : !organizerId ? { endDate: { gte: new Date() } } : {}
+            ),
             ...(endDate && { endDate: { lte: new Date(endDate) } }),
         };
 

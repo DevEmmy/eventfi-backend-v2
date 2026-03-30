@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { UserController } from '../controllers/user.controller';
 import { SettingsController } from '../controllers/settings.controller';
 import { BookingController } from '../controllers/booking.controller';
+import { ManageController } from '../controllers/manage.controller';
 import { authenticate, optionalAuth } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -22,6 +23,9 @@ router.patch('/me/settings/privacy', authenticate, SettingsController.updatePriv
 // Follow/Unfollow (require auth)
 router.post('/:userId/follow', authenticate, UserController.followUser);
 router.delete('/:userId/follow', authenticate, UserController.unfollowUser);
+
+// User search — must be before /:username to avoid being swallowed by the param route
+router.get('/search', authenticate, ManageController.searchUsers);
 
 // Public profile (optional auth for isFollowing)
 router.get('/:username', optionalAuth, UserController.getPublicProfile);
