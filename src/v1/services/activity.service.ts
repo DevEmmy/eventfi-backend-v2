@@ -81,33 +81,49 @@ export class ActivityService {
         const config = activity.config as any;
         const winnersCount = config?.winnersCount || 1;
 
-        // Get all registered attendees via confirmed booking orders
-        const orders = await prisma.bookingOrder.findMany({
-            where: { eventId: activity.eventId, status: OrderStatus.CONFIRMED },
-            include: {
-                user: { select: { id: true, displayName: true, username: true, avatar: true, email: true } }
+        // Get all checked-in attendees only
+        const checkedInAttendees = await prisma.attendee.findMany({
+            where: {
+                order: { eventId: activity.eventId, status: OrderStatus.CONFIRMED },
+                checkedIn: true
             },
-            distinct: ['userId']
+            include: {
+                order: {
+                    include: {
+                        user: { select: { id: true, displayName: true, username: true, avatar: true, email: true } }
+                    }
+                }
+            },
+            distinct: ['orderId']
         });
 
-        if (orders.length === 0) throw new Error('No registered attendees');
+        // Deduplicate by userId (one user may have multiple attendee records)
+        const seenUserIds = new Set<string>();
+        const uniqueAttendees = checkedInAttendees.filter(a => {
+            const uid = a.order.userId;
+            if (seenUserIds.has(uid)) return false;
+            seenUserIds.add(uid);
+            return true;
+        });
+
+        if (uniqueAttendees.length === 0) throw new Error('No checked-in attendees to draw from');
 
         // Shuffle and pick winners
-        const shuffled = orders.sort(() => Math.random() - 0.5);
-        const winners = shuffled.slice(0, Math.min(winnersCount, shuffled.length)).map(o => ({
-            userId: o.user.id,
-            name: o.user.displayName || o.user.username || o.user.email,
-            avatar: o.user.avatar,
-            username: o.user.username,
+        const shuffled = uniqueAttendees.sort(() => Math.random() - 0.5);
+        const winners = shuffled.slice(0, Math.min(winnersCount, shuffled.length)).map(a => ({
+            userId: a.order.user.id,
+            name: a.order.user.displayName || a.order.user.username || a.order.user.email,
+            avatar: a.order.user.avatar,
+            username: a.order.user.username,
         }));
 
         // Store results
         const updated = await prisma.eventActivity.update({
             where: { id: activityId },
-            data: { results: { winners, drawnAt: new Date().toISOString(), totalPool: orders.length } }
+            data: { results: { winners, drawnAt: new Date().toISOString(), totalPool: uniqueAttendees.length } }
         });
 
-        return { winners, totalPool: orders.length, activity: updated };
+        return { winners, totalPool: uniqueAttendees.length, activity: updated };
     }
 
     // Record an applause tap from an attendee — returns totals + top-5 leaderboard
@@ -119,6 +135,12 @@ export class ActivityService {
         if (!activity) throw new Error('Activity not found');
         if (activity.type !== ActivityType.APPLAUSE_METER) throw new Error('Not an applause meter');
         if (activity.status !== ActivityStatus.ACTIVE) throw new Error('Activity not active');
+
+        // Only checked-in attendees may participate
+        const checkedIn = await prisma.attendee.findFirst({
+            where: { order: { eventId: activity.eventId, userId }, checkedIn: true }
+        });
+        if (!checkedIn) throw new Error('Only checked-in attendees can participate');
 
         // Upsert entry — increment tap count for this user
         const existing = await prisma.activityEntry.findUnique({

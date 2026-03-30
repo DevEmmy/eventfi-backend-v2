@@ -264,6 +264,15 @@ export function initializeChatSocket(httpServer: HttpServer) {
             if (!userId) return;
 
             try {
+                // Only checked-in attendees may participate
+                const checkedIn = await prisma.attendee.findFirst({
+                    where: { order: { eventId: data.eventId, userId }, checkedIn: true }
+                });
+                if (!checkedIn) {
+                    socket.emit('activity:error', { message: 'Only checked-in attendees can participate' });
+                    return;
+                }
+
                 // Upsert entry — increment tap count for this user
                 const existing = await prisma.activityEntry.findUnique({
                     where: { activityId_userId: { activityId: data.activityId, userId } }
