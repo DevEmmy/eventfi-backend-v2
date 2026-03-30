@@ -191,30 +191,49 @@ export function initializeChatSocket(httpServer: HttpServer) {
 
         // ===== GAME / ACTIVITY EVENTS =====
 
+        // Join a dedicated activity room for an event (no ticket required - auth only)
+        socket.on('activity:join_event', (data: { eventId: string }) => {
+            if (!data.eventId) return;
+            const room = `activity:${data.eventId}`;
+            socket.join(room);
+            console.log(`[Activity WS] User ${socket.userId} joined activity room ${room}`);
+        });
+
+        // Helper: broadcast to activity room AND chat room (chat users also get updates)
+        const emitToEvent = (eventId: string, event: string, payload: any) => {
+            io.to(`activity:${eventId}`).emit(event, payload);
+            io.to(`chat:${eventId}`).emit(event, payload);
+        };
+
         // Organizer starts an activity - broadcast to all in event room
         socket.on('activity:start', async (data: { eventId: string; activityId: string; type: string }) => {
-            const room = `chat:${data.eventId}`;
-            io.to(room).emit('activity:started', {
+            emitToEvent(data.eventId, 'activity:started', {
                 activityId: data.activityId,
                 type: data.type,
                 startedBy: socket.userId
             });
         });
 
-        // Organizer broadcasts draw result to all
+        // Organizer broadcasts draw countdown then result
         socket.on('activity:broadcast_draw', (data: { eventId: string; activityId: string; winners: any[]; totalPool: number }) => {
-            const room = `chat:${data.eventId}`;
-            io.to(room).emit('activity:draw_result', {
+            // First emit countdown start so all clients begin counting
+            emitToEvent(data.eventId, 'activity:draw_countdown', {
                 activityId: data.activityId,
-                winners: data.winners,
-                totalPool: data.totalPool
+                seconds: 10
             });
+            // After 10 seconds, emit the actual result
+            setTimeout(() => {
+                emitToEvent(data.eventId, 'activity:draw_result', {
+                    activityId: data.activityId,
+                    winners: data.winners,
+                    totalPool: data.totalPool
+                });
+            }, 10000);
         });
 
         // Attendee taps applause - broadcast updated count to room
         socket.on('activity:tap', (data: { eventId: string; activityId: string; totalTaps: number; participantCount: number }) => {
-            const room = `chat:${data.eventId}`;
-            io.to(room).emit('activity:tap_update', {
+            emitToEvent(data.eventId, 'activity:tap_update', {
                 activityId: data.activityId,
                 totalTaps: data.totalTaps,
                 participantCount: data.participantCount
@@ -223,8 +242,7 @@ export function initializeChatSocket(httpServer: HttpServer) {
 
         // Organizer ends activity
         socket.on('activity:end', (data: { eventId: string; activityId: string; results: any }) => {
-            const room = `chat:${data.eventId}`;
-            io.to(room).emit('activity:ended', {
+            emitToEvent(data.eventId, 'activity:ended', {
                 activityId: data.activityId,
                 results: data.results
             });
