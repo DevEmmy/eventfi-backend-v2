@@ -319,6 +319,68 @@ export class EventService {
             }
         }
 
+        // Handle tickets: upsert existing, create new, delete removed (only if unsold)
+        if (data.tickets && data.tickets.length > 0) {
+            const existingTickets = await prisma.ticket.findMany({
+                where: { eventId: id },
+                include: { orderItems: { take: 1 } },
+            });
+
+            const existingMap = new Map(existingTickets.map(t => [t.id, t]));
+            const submittedIds = new Set(
+                (data.tickets as any[]).map((t: any) => t.id).filter((tid: string) => existingMap.has(tid))
+            );
+
+            // Delete tickets removed by the organizer — only if no orders placed
+            for (const existing of existingTickets) {
+                if (!submittedIds.has(existing.id) && existing.orderItems.length === 0) {
+                    await prisma.ticket.delete({ where: { id: existing.id } });
+                }
+            }
+
+            // Create or update each submitted ticket
+            for (const ticket of data.tickets as any[]) {
+                const existing = existingMap.get(ticket.id);
+                if (existing) {
+                    // Preserve sold count when adjusting quantity
+                    const sold = existing.quantity - existing.remaining;
+                    const newRemaining = Math.max(0, ticket.quantity - sold);
+                    await prisma.ticket.update({
+                        where: { id: ticket.id },
+                        data: {
+                            name: ticket.name,
+                            description: ticket.description || null,
+                            type: ticket.type,
+                            price: ticket.price,
+                            currency: ticket.currency,
+                            quantity: ticket.quantity,
+                            remaining: newRemaining,
+                            maxPerUser: ticket.maxPerUser || null,
+                            salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
+                            salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
+                        },
+                    });
+                } else {
+                    // New ticket (ID not in DB — created on frontend)
+                    await prisma.ticket.create({
+                        data: {
+                            eventId: id,
+                            name: ticket.name,
+                            description: ticket.description || null,
+                            type: ticket.type,
+                            price: ticket.price,
+                            currency: ticket.currency,
+                            quantity: ticket.quantity,
+                            remaining: ticket.quantity,
+                            maxPerUser: ticket.maxPerUser || null,
+                            salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
+                            salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
+                        },
+                    });
+                }
+            }
+        }
+
         const updatedEvent = await prisma.event.update({
             where: { id },
             data: updateData,
