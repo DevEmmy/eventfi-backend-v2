@@ -12,7 +12,7 @@ import vendorRoutes from './vendor.routes';
 import { BookingController } from '../controllers/booking.controller';
 import { ManageController } from '../controllers/manage.controller';
 import { ChatController } from '../controllers/chat.controller';
-import { AIController } from '../controllers/ai.controller';
+import { AIController, aiUploadMiddleware } from '../controllers/ai.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -44,8 +44,8 @@ router.get('/users/search', ManageController.searchUsers);
 // Team invitation acceptance
 router.post('/team/accept', authenticate, ManageController.acceptTeamInvitation);
 
-// AI event generation
-router.post('/ai/generate-event', authenticate, AIController.generateEvent);
+// AI event generation (accepts text, image, PDF, DOCX)
+router.post('/ai/generate-event', authenticate, aiUploadMiddleware, AIController.generateEvent);
 
 // User event chats
 router.get('/user/event-chats', authenticate, ChatController.getUserEventChats);
