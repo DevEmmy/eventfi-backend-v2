@@ -2,6 +2,7 @@ import { Server as HttpServer } from 'http';
 import { Server as SocketServer, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { ChatService } from '../services/chat.service';
+import { prisma } from '../config/database';
 
 if (!process.env.JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET environment variable is not set.');
@@ -244,14 +245,66 @@ export function initializeChatSocket(httpServer: HttpServer) {
             }, 10000);
         });
 
-        // Attendee taps applause - broadcast updated count + leaderboard to room
-        socket.on('activity:tap', (data: { eventId: string; activityId: string; totalTaps: number; participantCount: number; leaderboard?: any[] }) => {
-            emitToEvent(data.eventId, 'activity:tap_update', {
-                activityId: data.activityId,
-                totalTaps: data.totalTaps,
-                participantCount: data.participantCount,
-                leaderboard: data.leaderboard ?? [],
-            });
+        // Attendee taps applause — persist to DB then broadcast real totals + leaderboard
+        socket.on('activity:tap', async (data: { eventId: string; activityId: string }) => {
+            const userId = socket.userId;
+            if (!userId) return;
+
+            try {
+                // Upsert entry — increment tap count for this user
+                const existing = await prisma.activityEntry.findUnique({
+                    where: { activityId_userId: { activityId: data.activityId, userId } }
+                });
+
+                let myTaps: number;
+                if (existing) {
+                    const resp = existing.response as any;
+                    myTaps = (resp?.taps || 1) + 1;
+                    await prisma.activityEntry.update({
+                        where: { id: existing.id },
+                        data: { response: { taps: myTaps } }
+                    });
+                } else {
+                    myTaps = 1;
+                    await prisma.activityEntry.create({
+                        data: { activityId: data.activityId, userId, response: { taps: 1 } }
+                    });
+                }
+
+                // Fetch all entries with user info for leaderboard
+                const entries = await prisma.activityEntry.findMany({
+                    where: { activityId: data.activityId },
+                    include: { user: { select: { id: true, displayName: true, username: true, avatar: true } } }
+                });
+
+                const totalTaps = entries.reduce((sum, e) => {
+                    const r = e.response as any;
+                    return sum + (r?.taps || 1);
+                }, 0);
+
+                const leaderboard = entries
+                    .map(e => ({
+                        userId: e.userId,
+                        name: e.user.displayName || e.user.username || 'User',
+                        avatar: e.user.avatar,
+                        taps: (e.response as any)?.taps || 1,
+                    }))
+                    .sort((a, b) => b.taps - a.taps)
+                    .slice(0, 5);
+
+                // Send personal tap count back to the tapper
+                socket.emit('activity:tap_ack', { myTaps, activityId: data.activityId });
+
+                // Broadcast to everyone in the room
+                emitToEvent(data.eventId, 'activity:tap_update', {
+                    activityId: data.activityId,
+                    totalTaps,
+                    participantCount: entries.length,
+                    leaderboard,
+                });
+            } catch (err) {
+                socket.emit('activity:error', { message: 'Tap failed' });
+            }
         });
 
         // Organizer ends activity

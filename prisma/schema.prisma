@@ -50,8 +50,9 @@ model User {
   teamMemberships EventTeamMember[]
   chatMessages    ChatMessage[]
   chatMemberships ChatMember[]
-  notifications   Notification[]
-  vendor          Vendor?
+  notifications    Notification[]
+  vendor           Vendor?
+  activityEntries  ActivityEntry[]
 }
 
 // ============ NOTIFICATIONS ============
@@ -616,6 +617,7 @@ model ActivityEntry {
   activityId String        @db.Uuid
   activity   EventActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   userId     String        @db.Uuid
+  user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   response   Json          @default("{}")  // e.g. { taps: 5 } for applause
   createdAt  DateTime      @default(now())
 
