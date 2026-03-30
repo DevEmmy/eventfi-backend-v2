@@ -159,7 +159,8 @@ export class EventService {
             endDate,
             city,
             country,
-            type // PHYSICAL, ONLINE, HYBRID
+            type, // PHYSICAL, ONLINE, HYBRID
+            organizerId
         } = query;
 
         const skip = (Number(page) - 1) * Number(limit);
@@ -179,6 +180,7 @@ export class EventService {
             ...(city && { city: { contains: city, mode: 'insensitive' } }),
             ...(country && { country: { contains: country, mode: 'insensitive' } }),
             ...(type && { locationType: type }),
+            ...(organizerId && { organizerId }),
 
             // Date filters
             ...(startDate && { startDate: { gte: new Date(startDate) } }),
