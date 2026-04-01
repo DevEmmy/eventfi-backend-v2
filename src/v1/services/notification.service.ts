@@ -50,7 +50,7 @@ export class NotificationService {
     }
 
     /**
-     * Create notifications for multiple users
+     * Create notifications for multiple users and push real-time socket events
      */
     static async createBulk(
         userIds: string[],
@@ -62,7 +62,7 @@ export class NotificationService {
             metadata?: Record<string, any>;
         }
     ) {
-        return prisma.notification.createMany({
+        const result = await prisma.notification.createMany({
             data: userIds.map((userId) => ({
                 userId,
                 type: data.type,
@@ -72,6 +72,29 @@ export class NotificationService {
                 metadata: data.metadata || undefined,
             })),
         });
+
+        // Push real-time socket events to each user
+        try {
+            const io = getIO();
+            if (io) {
+                const payload = {
+                    type: data.type.toLowerCase(),
+                    title: data.title,
+                    message: data.message,
+                    read: false,
+                    actionUrl: data.actionUrl,
+                    metadata: data.metadata,
+                    createdAt: new Date().toISOString(),
+                };
+                for (const userId of userIds) {
+                    io.to(`notification:${userId}`).emit('notification:new', payload);
+                }
+            }
+        } catch {
+            // Non-critical — DB writes already succeeded
+        }
+
+        return result;
     }
 
     /**
