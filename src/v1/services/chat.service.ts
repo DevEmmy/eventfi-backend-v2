@@ -66,10 +66,15 @@ export class ChatService {
             }
         }
 
-        // Check if chat is still active (event ended + 24hrs)
-        const eventEnd = new Date(chat.event.endDate);
-        const chatExpiry = new Date(eventEnd.getTime() + 24 * 60 * 60 * 1000);
-        const isExpired = new Date() > chatExpiry;
+        // Check if chat is still active (event ended + 7 days grace period)
+        // Only expire if endDate is set and the grace period has truly elapsed
+        const isExpired = (() => {
+            if (!chat.event.endDate) return false;
+            const eventEnd = new Date(chat.event.endDate);
+            if (isNaN(eventEnd.getTime())) return false;
+            const chatExpiry = new Date(eventEnd.getTime() + 7 * 24 * 60 * 60 * 1000);
+            return new Date() > chatExpiry;
+        })();
 
         if (!chat.isActive || isExpired) {
             return {
