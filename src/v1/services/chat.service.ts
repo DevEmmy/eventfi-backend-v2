@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { getIO } from '../websocket/socket.instance';
 
 const CHAT_ERROR_CODES = {
     CHAT_NOT_FOUND: 'Event chat does not exist',
@@ -66,23 +67,9 @@ export class ChatService {
             }
         }
 
-        // Check if chat is still active (event ended + 7 days grace period)
-        // Only expire if endDate is set and the grace period has truly elapsed
-        const isExpired = (() => {
-            if (!chat.event.endDate) return false;
-            const eventEnd = new Date(chat.event.endDate);
-            if (isNaN(eventEnd.getTime())) return false;
-            const chatExpiry = new Date(eventEnd.getTime() + 7 * 24 * 60 * 60 * 1000);
-            return new Date() > chatExpiry;
-        })();
-
-        if (!chat.isActive || isExpired) {
-            return {
-                chat: null,
-                canJoin: false,
-                reason: 'CHAT_DISABLED'
-            };
-        }
+        // Chat is read-only when the organizer has disabled it
+        // Users can still join and read messages, but cannot send new ones
+        const isReadOnly = !chat.isActive;
 
         // Check if user has a ticket (for membersOnly chats)
         let hasTicket = false;
@@ -137,6 +124,7 @@ export class ChatService {
                 id: chat.id,
                 eventId: chat.eventId,
                 isActive: chat.isActive,
+                readOnly: isReadOnly,
                 slowMode: chat.slowMode,
                 membersOnly: chat.membersOnly,
                 memberCount: chat._count.members,
@@ -496,7 +484,21 @@ export class ChatService {
             }
         });
 
-        return { slowMode: updated.slowMode, isActive: updated.isActive };
+        // Broadcast settings change to all members currently in the chat room
+        try {
+            const io = getIO();
+            if (io) {
+                io.to(`chat:${eventId}`).emit('chat:settings', {
+                    slowMode: updated.slowMode,
+                    isActive: updated.isActive,
+                    readOnly: !updated.isActive,
+                });
+            }
+        } catch {
+            // Non-critical
+        }
+
+        return { slowMode: updated.slowMode, isActive: updated.isActive, readOnly: !updated.isActive };
     }
 
     /**
@@ -517,6 +519,7 @@ export class ChatService {
             id: chat.id,
             eventId: chat.eventId,
             isActive: chat.isActive,
+            readOnly: !chat.isActive,
             slowMode: chat.slowMode,
             membersOnly: chat.membersOnly,
             memberCount: chat._count?.members || 0,
