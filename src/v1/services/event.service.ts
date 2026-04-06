@@ -268,8 +268,12 @@ export class EventService {
         if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
 
         // Construct update data
-        // Regenerate slug if title changes
-        const slug = data.title ? data.title.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : undefined;
+        // Use explicit slug if provided, otherwise regenerate from title if title changed
+        const slug = data.slug
+            ? data.slug.replace(/[^a-zA-Z0-9-_]/g, '').toUpperCase()
+            : data.title
+                ? data.title.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+                : undefined;
 
         const updateData: Prisma.EventUpdateInput = {
             ...(data.title && { title: data.title }),
