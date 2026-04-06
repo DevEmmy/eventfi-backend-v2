@@ -186,13 +186,7 @@ export class EventService {
             ...(startDate
                 ? { startDate: { gte: new Date(startDate) } }
                 : !organizerId
-                    ? {
-                        OR: [
-                            { endDate: { gte: new Date() } },
-                            // Events without an endDate: keep if startDate is today or future
-                            { endDate: null, startDate: { gte: new Date() } },
-                        ]
-                    }
+                    ? { endDate: { gte: new Date() } }
                     : {}
             ),
             ...(endDate && { endDate: { lte: new Date(endDate) } }),
