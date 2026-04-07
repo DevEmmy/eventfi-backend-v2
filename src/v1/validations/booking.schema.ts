@@ -6,6 +6,7 @@ export const initiateBookingSchema = z.object({
         ticketTypeId: z.string().uuid('Invalid ticket type ID'),
         quantity: z.number().int().min(1, 'Quantity must be at least 1').max(50, 'Maximum 50 tickets per item'),
     })).min(1, 'At least one item is required'),
+    guestEmail: z.string().email('Invalid guest email').optional(),
 });
 
 export const updateAttendeesSchema = z.object({

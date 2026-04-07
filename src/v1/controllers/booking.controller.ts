@@ -18,7 +18,7 @@ export class BookingController {
                 });
             }
 
-            if (!userId || !guestEmail) {
+            if (!userId && !guestEmail) {
                 return res.status(400).json({
                     status: 'error',
                     message: 'Please provide your email to book as a guest',
