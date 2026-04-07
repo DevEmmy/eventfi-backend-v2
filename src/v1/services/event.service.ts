@@ -448,6 +448,7 @@ export class EventService {
             events = await prisma.event.findMany({
                 where: {
                     privacy: EventPrivacy.PUBLIC,
+                    endDate: { gte: new Date() },
                     category: { in: interests }
                 },
                 take: 5,
@@ -467,7 +468,8 @@ export class EventService {
         if (events.length === 0) {
             events = await prisma.event.findMany({
                 where: {
-                    privacy: EventPrivacy.PUBLIC
+                    privacy: EventPrivacy.PUBLIC,
+                    endDate: { gte: new Date() },
                 },
                 take: 5,
                 orderBy: { createdAt: 'desc' },
@@ -494,12 +496,13 @@ export class EventService {
 
         if (!event) throw new Error('Event not found');
 
-        // Find events with same category or overlapping tags, excluding current
+        // Find events with same category or overlapping tags, excluding current and past
         const related = await prisma.event.findMany({
             where: {
                 AND: [
                     { id: { not: eventId } },
                     { privacy: EventPrivacy.PUBLIC },
+                    { endDate: { gte: new Date() } },
                     {
                         OR: [
                             { category: event.category },
