@@ -9,6 +9,37 @@ import { NotificationService } from './notification.service';
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
 
+/**
+ * Resolve a userId for the booking.
+ * - If the user is logged in, use their id.
+ * - If guest: find an existing user by email, or create a minimal guest account.
+ *   Guest accounts have no password and can be claimed later via a password-reset flow.
+ */
+async function resolveUserId(loggedInUserId: string | undefined, guestEmail: string): Promise<string> {
+    if (loggedInUserId) return loggedInUserId;
+
+    const email = guestEmail.toLowerCase().trim();
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return existing.id;
+
+    // Auto-create a guest account — username derived from email prefix + random suffix
+    const base = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 16);
+    const suffix = Math.random().toString(36).substring(2, 7);
+    const username = `${base}_${suffix}`;
+
+    // passwordHash is intentionally empty — account is locked until user sets a password
+    const guest = await prisma.user.create({
+        data: {
+            email,
+            username,
+            displayName: email.split('@')[0],
+            passwordHash: '',
+        },
+        select: { id: true },
+    });
+    return guest.id;
+}
+
 interface OrderItemInput {
     ticketTypeId: string;
     quantity: number;
@@ -80,7 +111,9 @@ export class BookingService {
     /**
      * Initiate a booking order
      */
-    static async initiateOrder(userId: string, eventId: string, items: OrderItemInput[]) {
+    static async initiateOrder(userId: string | undefined, eventId: string, items: OrderItemInput[], guestEmail?: string) {
+        if (!userId && !guestEmail) throw new Error('Sign in or provide your email to book');
+        const resolvedUserId = await resolveUserId(userId, guestEmail!);
         // Validate event exists
         const event = await prisma.event.findUnique({
             where: { id: eventId },
@@ -132,7 +165,7 @@ export class BookingService {
 
         const order = await prisma.bookingOrder.create({
             data: {
-                userId,
+                userId: resolvedUserId,
                 eventId,
                 subtotal,
                 serviceFee,
@@ -165,7 +198,7 @@ export class BookingService {
     /**
      * Get order details
      */
-    static async getOrder(orderId: string, userId: string) {
+    static async getOrder(orderId: string, userId?: string) {
         const order = await prisma.bookingOrder.findUnique({
             where: { id: orderId },
             include: {
@@ -178,7 +211,8 @@ export class BookingService {
         });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        // Only enforce ownership check when a logged-in userId is provided
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
 
         return this.formatOrder(order);
     }
@@ -186,14 +220,14 @@ export class BookingService {
     /**
      * Update attendee information
      */
-    static async updateAttendees(orderId: string, userId: string, attendees: AttendeeInput[]) {
+    static async updateAttendees(orderId: string, userId: string | undefined, attendees: AttendeeInput[]) {
         const order = await prisma.bookingOrder.findUnique({
             where: { id: orderId },
             include: { items: true }
         });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot update attendees for this order');
 
         // Delete existing attendees and create new ones
@@ -218,11 +252,11 @@ export class BookingService {
     /**
      * Apply promo code
      */
-    static async applyPromoCode(orderId: string, userId: string, promoCode: string) {
+    static async applyPromoCode(orderId: string, userId: string | undefined, promoCode: string) {
         const order = await prisma.bookingOrder.findUnique({ where: { id: orderId } });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot apply promo to this order');
 
         // TODO: Implement promo code validation
@@ -238,14 +272,14 @@ export class BookingService {
     /**
      * Cancel pending order
      */
-    static async cancelOrder(orderId: string, userId: string) {
+    static async cancelOrder(orderId: string, userId: string | undefined) {
         const order = await prisma.bookingOrder.findUnique({
             where: { id: orderId },
             include: { items: true }
         });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot cancel this order');
 
         // Release tickets
@@ -267,20 +301,20 @@ export class BookingService {
     /**
      * Initialize payment via Paystack (for paid tickets)
      */
-    static async initializePayment(orderId: string, userId: string, paymentMethod: string, callbackUrl: string) {
+    static async initializePayment(orderId: string, userId: string | undefined, paymentMethod: string, callbackUrl: string) {
         const order = await prisma.bookingOrder.findUnique({
             where: { id: orderId },
             include: { event: { select: { title: true } } }
         });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot pay for this order');
         if (order.total === 0) throw new Error('Use confirm endpoint for free tickets');
 
-        // Fetch user email for Paystack
+        // Fetch user email for Paystack (could be a guest account)
         const user = await prisma.user.findUnique({
-            where: { id: userId },
+            where: { id: order.userId },
             select: { email: true }
         });
         if (!user) throw new Error('User not found');
@@ -319,14 +353,14 @@ export class BookingService {
     /**
      * Confirm order (for free tickets or after payment)
      */
-    static async confirmOrder(orderId: string, userId: string, attendees?: AttendeeInput[]) {
+    static async confirmOrder(orderId: string, userId: string | undefined, attendees?: AttendeeInput[]) {
         const order = await prisma.bookingOrder.findUnique({
             where: { id: orderId },
             include: { items: true, attendees: true }
         });
 
         if (!order) throw new Error('Order not found');
-        if (order.userId !== userId) throw new Error('Unauthorized');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status === 'CONFIRMED') throw new Error('Order already confirmed');
         if (order.status !== 'PENDING') throw new Error('Cannot confirm this order');
 
@@ -375,7 +409,7 @@ export class BookingService {
 
         // Auto-add user to event chat
         try {
-            await ChatService.getOrJoinChat(order.eventId, userId);
+            await ChatService.getOrJoinChat(order.eventId, order.userId);
         } catch (error) {
             console.error('Failed to auto-join chat:', error);
         }
@@ -391,7 +425,7 @@ export class BookingService {
 
                 // Notify the buyer
                 NotificationService.create({
-                    userId,
+                    userId: order.userId,
                     type: 'TICKET_SALE',
                     title: 'Booking Confirmed!',
                     message: `Your ${ticketCount} ticket${ticketCount > 1 ? 's' : ''} for "${eventForNotif.title}" are confirmed. See you there!`,

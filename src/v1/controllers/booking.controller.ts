@@ -8,8 +8,8 @@ export class BookingController {
      */
     static async initiateOrder(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
-            const { eventId, items } = req.body;
+            const userId = (req as any).user?.id;
+            const { eventId, items, guestEmail } = req.body;
 
             if (!eventId || !items || !items.length) {
                 return res.status(400).json({
@@ -18,7 +18,14 @@ export class BookingController {
                 });
             }
 
-            const order = await BookingService.initiateOrder(userId, eventId, items);
+            if (!userId && !guestEmail) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Please provide your email to book as a guest',
+                });
+            }
+
+            const order = await BookingService.initiateOrder(userId, eventId, items, guestEmail);
 
             return res.status(201).json({
                 status: 'success',
@@ -39,7 +46,7 @@ export class BookingController {
      */
     static async getOrder(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
 
             const order = await BookingService.getOrder(orderId, userId);
@@ -63,7 +70,7 @@ export class BookingController {
      */
     static async updateAttendees(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
             const { attendees } = req.body;
 
@@ -88,7 +95,7 @@ export class BookingController {
      */
     static async applyPromoCode(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
             const { promoCode } = req.body;
 
@@ -111,7 +118,7 @@ export class BookingController {
      */
     static async cancelOrder(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
 
             const result = await BookingService.cancelOrder(orderId, userId);
@@ -135,7 +142,7 @@ export class BookingController {
      */
     static async initializePayment(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
             const { paymentMethod, callbackUrl } = req.body;
 
@@ -160,7 +167,7 @@ export class BookingController {
      */
     static async confirmOrder(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { orderId } = req.params;
             const { attendees } = req.body;
 
@@ -214,7 +221,7 @@ export class BookingController {
      */
     static async getUserOrders(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const page = parseInt(req.query.page as string) || 1;
             const limit = parseInt(req.query.limit as string) || 10;
 
@@ -237,7 +244,7 @@ export class BookingController {
      */
     static async getUserTickets(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const status = req.query.status as string;
             const upcoming = req.query.upcoming === 'true';
             const page = parseInt(req.query.page as string) || 1;
@@ -262,7 +269,7 @@ export class BookingController {
      */
     static async getTicketDetails(req: Request, res: Response) {
         try {
-            const userId = (req as any).user.id;
+            const userId = (req as any).user?.id;
             const { ticketId } = req.params;
 
             const ticket = await BookingService.getTicketDetails(ticketId, userId);
