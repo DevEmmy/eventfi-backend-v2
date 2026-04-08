@@ -164,7 +164,7 @@ export function initializeChatSocket(httpServer: HttpServer) {
 
                 // Broadcast to all in room including sender
                 const room = `chat:${socket.eventId}`;
-                io.to(room).emit('chat:message', { message });
+                io.to(room).emit('chat:message', { message: { ...message, eventId: socket.eventId } });
             } catch (error: any) {
                 socket.emit('chat:error', { code: getErrorCode(error.message), message: error.message });
             }
