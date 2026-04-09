@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { EventCategory, EventStatus, EventPrivacy, TicketType, Prisma } from '@prisma/client';
 import { ChatService } from './chat.service';
+import { EmailService } from './email.service';
 
 // Interfaces matching the user's request structure (for input)
 export interface CreateEventInput {
@@ -396,6 +397,11 @@ export class EventService {
             });
         }
 
+        // Detect location reveal: was previously unset, now being set
+        const locationBeingSet = data.location && (data.location.venueName || data.location.address);
+        const hadNoLocation = !event.venueName && !event.address;
+        const locationJustRevealed = locationBeingSet && hadNoLocation;
+
         const updatedEvent = await prisma.event.update({
             where: { id },
             data: updateData,
@@ -403,14 +409,39 @@ export class EventService {
                 tickets: true,
                 scheduleItems: { orderBy: { order: 'asc' } },
                 organizer: {
-                    select: {
-                        id: true,
-                        displayName: true,
-                        avatar: true
-                    }
+                    select: { id: true, displayName: true, avatar: true }
                 }
             }
         });
+
+        // If location was just revealed, email all registered attendees
+        if (locationJustRevealed) {
+            const orders = await prisma.order.findMany({
+                where: { eventId: id, status: 'CONFIRMED' },
+                include: { user: { select: { email: true, displayName: true } } }
+            });
+
+            const frontendUrl = process.env.FRONTEND_URL || 'https://eventfi.live';
+            const eventUrl = updatedEvent.slug
+                ? `https://eventfi.live/${updatedEvent.slug}`
+                : `${frontendUrl}/events/${id}`;
+            const eventDate = updatedEvent.startDate.toLocaleDateString('en-NG', {
+                weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+            });
+
+            // Fire-and-forget — don't block the response
+            for (const order of orders) {
+                if (order.user?.email) {
+                    EmailService.sendLocationAnnounced(order.user.email, {
+                        eventTitle: updatedEvent.title,
+                        eventDate,
+                        venueName: data.location?.venueName,
+                        address: data.location?.address,
+                        eventUrl,
+                    }).catch(() => {/* silently fail per-email */});
+                }
+            }
+        }
 
         return updatedEvent;
     }

@@ -84,4 +84,12 @@ export class EmailService {
         const template = EmailTemplates.announcement(data);
         return this.send(to, template.subject, template.html, template.text);
     }
+
+    /**
+     * Send Location Announced notification to all registered attendees
+     */
+    static async sendLocationAnnounced(to: string, data: { eventTitle: string, eventDate: string, venueName?: string, address?: string, eventUrl: string }) {
+        const template = EmailTemplates.locationAnnounced(data);
+        return this.send(to, template.subject, template.html, template.text);
+    }
 }

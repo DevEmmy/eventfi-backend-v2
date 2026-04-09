@@ -180,6 +180,33 @@ export const EmailTemplates = {
     }),
 
     /**
+     * Location Announced Template — sent when organizer sets venue on a previously unannounced event
+     */
+    locationAnnounced: (data: { eventTitle: string, eventDate: string, venueName?: string, address?: string, eventUrl: string }) => ({
+        subject: `📍 Venue Confirmed: ${data.eventTitle}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">The venue has been confirmed!</h2>
+                <p>Great news — the organizer of <strong>${data.eventTitle}</strong> has just confirmed the venue details for the event on <strong>${data.eventDate}</strong>.</p>
+                <div style="background-color: #f5f3ff; border-left: 4px solid #6366f1; padding: 16px 20px; border-radius: 8px; margin: 20px 0;">
+                    <p style="margin: 0 0 4px 0; font-weight: bold; color: #4f46e5;">📍 Venue</p>
+                    ${data.venueName ? `<p style="margin: 0 0 4px 0; font-size: 16px; font-weight: 600; color: #111;">${data.venueName}</p>` : ''}
+                    ${data.address ? `<p style="margin: 0; color: #555;">${data.address}</p>` : ''}
+                </div>
+                <p>Mark your calendar and make sure you have your ticket ready. We look forward to seeing you there!</p>
+                <div style="margin: 30px 0;">
+                    <a href="${data.eventUrl}" style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                        View Event Details
+                    </a>
+                </div>
+                <p style="color: #888; font-size: 13px;">You are receiving this because you registered for this event on EventFi.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Venue Confirmed for ${data.eventTitle} (${data.eventDate}). ${data.venueName || ''} — ${data.address || ''}. View event: ${data.eventUrl}`
+    }),
+
+    /**
      * General Announcement (Organizer to Attendees)
      */
     announcement: (data: { eventTitle: string, subject: string, content: string, organizerName: string }) => ({
