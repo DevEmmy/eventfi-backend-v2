@@ -185,6 +185,7 @@ model Event {
   tickets       Ticket[]
   reviews       Review[]
   scheduleItems ScheduleItem[]
+  speakers      EventSpeaker[]
   favorites     Favorite[]
   userTickets   UserTicket[]
   orders        BookingOrder[]
@@ -250,6 +251,24 @@ model ScheduleItem {
 
   eventId String @db.Uuid
   event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+}
+
+model EventSpeaker {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  title       String? // e.g. "CEO at Acme Corp"
+  bio         String?
+  avatar      String? // URL
+  twitterUrl  String?
+  linkedinUrl String?
+  websiteUrl  String?
+  order       Int     @default(0)
+
+  eventId String @db.Uuid
+  event   Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Follow {

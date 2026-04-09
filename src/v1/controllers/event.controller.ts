@@ -163,4 +163,48 @@ export class EventController {
             });
         }
     }
+
+    // ─── Speaker endpoints ────────────────────────────────────────────────────
+
+    static async getSpeakers(req: Request, res: Response) {
+        try {
+            const speakers = await EventService.getSpeakers(req.params.id);
+            return res.status(200).json({ status: 'success', data: speakers });
+        } catch (error: any) {
+            return res.status(500).json({ status: 'error', message: error.message });
+        }
+    }
+
+    static async addSpeaker(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const speaker = await EventService.addSpeaker(req.params.id, userId, req.body);
+            return res.status(201).json({ status: 'success', data: speaker });
+        } catch (error: any) {
+            const code = error.message.includes('Unauthorized') ? 403 : error.message.includes('not found') ? 404 : 500;
+            return res.status(code).json({ status: 'error', message: error.message });
+        }
+    }
+
+    static async updateSpeaker(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const speaker = await EventService.updateSpeaker(req.params.speakerId, userId, req.body);
+            return res.status(200).json({ status: 'success', data: speaker });
+        } catch (error: any) {
+            const code = error.message.includes('Unauthorized') ? 403 : error.message.includes('not found') ? 404 : 500;
+            return res.status(code).json({ status: 'error', message: error.message });
+        }
+    }
+
+    static async deleteSpeaker(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            await EventService.deleteSpeaker(req.params.speakerId, userId);
+            return res.status(200).json({ status: 'success', message: 'Speaker removed' });
+        } catch (error: any) {
+            const code = error.message.includes('Unauthorized') ? 403 : error.message.includes('not found') ? 404 : 500;
+            return res.status(code).json({ status: 'error', message: error.message });
+        }
+    }
 }

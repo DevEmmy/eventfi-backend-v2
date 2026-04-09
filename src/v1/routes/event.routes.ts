@@ -47,4 +47,10 @@ router.get('/:id/reviews', ReviewController.getReviews);
 router.get('/:id/reviews/stats', ReviewController.getStats);
 router.post('/:id/reviews', authenticate, validate(reviewSchema), ReviewController.createReview);
 
+// Speakers
+router.get('/:id/speakers', EventController.getSpeakers);
+router.post('/:id/speakers', authenticate, EventController.addSpeaker);
+router.patch('/:id/speakers/:speakerId', authenticate, EventController.updateSpeaker);
+router.delete('/:id/speakers/:speakerId', authenticate, EventController.deleteSpeaker);
+
 export default router;

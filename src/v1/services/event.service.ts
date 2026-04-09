@@ -128,6 +128,7 @@ export class EventService {
             include: {
                 tickets: true,
                 scheduleItems: { orderBy: { order: 'asc' } },
+                speakers: { orderBy: { order: 'asc' } },
                 organizer: {
                     select: {
                         id: true,
@@ -408,6 +409,7 @@ export class EventService {
             include: {
                 tickets: true,
                 scheduleItems: { orderBy: { order: 'asc' } },
+                speakers: { orderBy: { order: 'asc' } },
                 organizer: {
                     select: { id: true, displayName: true, avatar: true }
                 }
@@ -462,6 +464,55 @@ export class EventService {
         });
 
         return { message: 'Event deleted successfully' };
+    }
+
+    // ─── Speaker CRUD ────────────────────────────────────────────────────────
+
+    static async getSpeakers(eventId: string) {
+        return prisma.eventSpeaker.findMany({
+            where: { eventId },
+            orderBy: { order: 'asc' },
+        });
+    }
+
+    static async addSpeaker(eventId: string, userId: string, data: {
+        name: string; title?: string; bio?: string; avatar?: string;
+        twitterUrl?: string; linkedinUrl?: string; websiteUrl?: string; order?: number;
+    }) {
+        const event = await prisma.event.findUnique({ where: { id: eventId } });
+        if (!event) throw new Error('Event not found');
+        if (event.organizerId !== userId) throw new Error('Unauthorized');
+
+        const count = await prisma.eventSpeaker.count({ where: { eventId } });
+        return prisma.eventSpeaker.create({
+            data: { ...data, eventId, order: data.order ?? count },
+        });
+    }
+
+    static async updateSpeaker(speakerId: string, userId: string, data: Partial<{
+        name: string; title: string; bio: string; avatar: string;
+        twitterUrl: string; linkedinUrl: string; websiteUrl: string; order: number;
+    }>) {
+        const speaker = await prisma.eventSpeaker.findUnique({
+            where: { id: speakerId },
+            include: { event: { select: { organizerId: true } } },
+        });
+        if (!speaker) throw new Error('Speaker not found');
+        if (speaker.event.organizerId !== userId) throw new Error('Unauthorized');
+
+        return prisma.eventSpeaker.update({ where: { id: speakerId }, data });
+    }
+
+    static async deleteSpeaker(speakerId: string, userId: string) {
+        const speaker = await prisma.eventSpeaker.findUnique({
+            where: { id: speakerId },
+            include: { event: { select: { organizerId: true } } },
+        });
+        if (!speaker) throw new Error('Speaker not found');
+        if (speaker.event.organizerId !== userId) throw new Error('Unauthorized');
+
+        await prisma.eventSpeaker.delete({ where: { id: speakerId } });
+        return { message: 'Speaker removed' };
     }
 
     static async getRecommendations(userId: string) {
@@ -595,6 +646,7 @@ export class EventService {
             include: {
                 tickets: true,
                 scheduleItems: { orderBy: { order: 'asc' } },
+                speakers: { orderBy: { order: 'asc' } },
                 organizer: {
                     select: {
                         id: true,
