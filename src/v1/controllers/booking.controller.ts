@@ -188,29 +188,30 @@ export class BookingController {
     }
 
     /**
-     * POST /webhooks/payment - Paystack payment webhook
-     * Verifies HMAC SHA512 signature before processing
+     * POST /webhooks/payment - ZendFi payment webhook
+     * Verifies HMAC-SHA256 signature before processing.
+     * Header: x-zendfi-signature: t={timestamp},v1={signature}
      */
     static async paymentWebhook(req: Request, res: Response) {
         try {
-            // Verify Paystack webhook signature
-            const signature = req.headers['x-paystack-signature'] as string;
-            if (!signature) {
+            const signatureHeader = req.headers['x-zendfi-signature'] as string;
+            if (!signatureHeader) {
                 return res.status(401).json({ status: 'error', message: 'Missing webhook signature' });
             }
 
+            // ZendFi requires the raw JSON body for signature verification
             const rawBody = JSON.stringify(req.body);
-            const isValid = PaymentService.verifyWebhookSignature(rawBody, signature);
+            const isValid = PaymentService.verifyWebhookSignature(rawBody, signatureHeader);
             if (!isValid) {
                 return res.status(401).json({ status: 'error', message: 'Invalid webhook signature' });
             }
 
-            const { event, data } = req.body;
-            const result = await BookingService.handlePaymentWebhook(event, data);
+            const { event, payment } = req.body;
+            const result = await BookingService.handlePaymentWebhook(event, payment);
 
             return res.status(200).json(result);
         } catch (error: any) {
-            // Always return 200 to Paystack to prevent retries on app errors
+            // Always return 200 to prevent ZendFi retry storms on internal errors
             console.error('Webhook processing error:', error.message);
             return res.status(200).json({ received: true });
         }

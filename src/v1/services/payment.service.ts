@@ -1,18 +1,18 @@
-import { Paystack } from 'paystack-sdk';
+import { ZendFiClient, type Currency } from '@zendfi/sdk';
 import crypto from 'crypto';
 
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+const ZENDFI_API_KEY = process.env.ZENDFI_API_KEY;
+const ZENDFI_WEBHOOK_SECRET = process.env.ZENDFI_WEBHOOK_SECRET;
 
-if (!PAYSTACK_SECRET_KEY) {
-    console.warn('WARNING: PAYSTACK_SECRET_KEY is not set. Payment features will be unavailable.');
+if (!ZENDFI_API_KEY) {
+    console.warn('WARNING: ZENDFI_API_KEY is not set. Payment features will be unavailable.');
 }
 
-const paystack = PAYSTACK_SECRET_KEY ? new Paystack(PAYSTACK_SECRET_KEY) : null;
+const zendfi = ZENDFI_API_KEY ? new ZendFiClient({ apiKey: ZENDFI_API_KEY }) : null;
 
 export interface PaymentInitResult {
     paymentUrl: string;
-    reference: string;
-    accessCode: string;
+    reference: string; // ZendFi payment ID (pay_test_... / pay_live_...)
 }
 
 export interface PaymentVerifyResult {
@@ -20,79 +20,80 @@ export interface PaymentVerifyResult {
     reference: string;
     amount: number;
     currency: string;
-    paidAt?: string;
 }
 
 export class PaymentService {
     /**
-     * Initialize a Paystack transaction
+     * Create a ZendFi payment and return the hosted checkout URL.
+     * ZendFi accepts amounts in standard units (not smallest unit).
+     * Supported currencies: USD, EUR, GBP. Supported tokens: USDC, USDT, SOL.
      */
     static async initializeTransaction(
-        email: string,
-        amountInKobo: number,
-        reference: string,
-        callbackUrl: string,
+        amount: number,
+        currency: string,
+        description: string,
         metadata?: Record<string, any>
     ): Promise<PaymentInitResult> {
-        if (!paystack) {
-            throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
+        if (!zendfi) {
+            throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
         }
 
-        const response = await paystack.transaction.initialize({
-            email,
-            amount: String(amountInKobo),
-            reference,
-            callback_url: callbackUrl,
-            metadata: metadata as any,
+        // ZendFi only supports USD/EUR/GBP — default to USD for unsupported currencies (e.g. NGN)
+        const zendfiCurrency = (['USD', 'EUR', 'GBP'].includes(currency) ? currency : 'USD') as Currency;
+
+        const payment = await zendfi.createPayment({
+            amount,
+            currency: zendfiCurrency,
+            token: 'USDC',
+            description,
+            metadata,
         });
 
-        if (!response || !response.status) {
-            throw new Error(response?.message || 'Failed to initialize payment');
-        }
-
-        const data = response.data as any;
         return {
-            paymentUrl: data.authorization_url,
-            reference: data.reference,
-            accessCode: data.access_code,
+            paymentUrl: (payment as any).payment_url,
+            reference: (payment as any).id,
         };
     }
 
     /**
-     * Verify a Paystack transaction
+     * Fetch a ZendFi payment by ID to check its current status.
      */
-    static async verifyTransaction(reference: string): Promise<PaymentVerifyResult> {
-        if (!paystack) {
-            throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
+    static async getPayment(paymentId: string) {
+        if (!zendfi) {
+            throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
         }
-
-        const response = await paystack.transaction.verify(reference);
-
-        if (!response || !response.status) {
-            throw new Error(response?.message || 'Failed to verify payment');
-        }
-
-        const data = response.data as any;
-        return {
-            status: data.status === 'success' ? 'success' : data.status === 'abandoned' ? 'abandoned' : 'failed',
-            reference: data.reference,
-            amount: data.amount,
-            currency: data.currency,
-            paidAt: data.paid_at,
-        };
+        return (zendfi as any).getPayment(paymentId);
     }
 
     /**
-     * Verify Paystack webhook signature using HMAC SHA512
+     * Verify a ZendFi webhook signature.
+     *
+     * Header format:  x-zendfi-signature: t={timestamp},v1={signature}
+     * Algorithm:      HMAC-SHA256( "{timestamp}.{rawBody}", webhookSecret )
+     * Replay window:  reject signatures older than 5 minutes
      */
-    static verifyWebhookSignature(body: string, signature: string): boolean {
-        if (!PAYSTACK_SECRET_KEY) return false;
+    static verifyWebhookSignature(rawBody: string, signatureHeader: string): boolean {
+        if (!ZENDFI_WEBHOOK_SECRET) return false;
 
-        const hash = crypto
-            .createHmac('sha512', PAYSTACK_SECRET_KEY)
-            .update(body)
+        const parts = signatureHeader.split(',');
+        const tPart = parts.find(p => p.startsWith('t='));
+        const v1Part = parts.find(p => p.startsWith('v1='));
+
+        if (!tPart || !v1Part) return false;
+
+        const timestamp = tPart.slice(2);
+        const signature = v1Part.slice(3);
+
+        // Reject signatures older than 5 minutes
+        const ts = parseInt(timestamp, 10);
+        if (isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
+
+        const payload = `${timestamp}.${rawBody}`;
+        const expected = crypto
+            .createHmac('sha256', ZENDFI_WEBHOOK_SECRET)
+            .update(payload)
             .digest('hex');
 
-        return hash === signature;
+        return expected === signature;
     }
 }

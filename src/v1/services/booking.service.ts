@@ -299,7 +299,7 @@ export class BookingService {
     }
 
     /**
-     * Initialize payment via Paystack (for paid tickets)
+     * Initialize payment via ZendFi (for paid tickets)
      */
     static async initializePayment(orderId: string, userId: string | undefined, paymentMethod: string, callbackUrl: string) {
         const order = await prisma.bookingOrder.findUnique({
@@ -312,32 +312,22 @@ export class BookingService {
         if (order.status !== 'PENDING') throw new Error('Cannot pay for this order');
         if (order.total === 0) throw new Error('Use confirm endpoint for free tickets');
 
-        // Fetch user email for Paystack (could be a guest account)
-        const user = await prisma.user.findUnique({
-            where: { id: order.userId },
-            select: { email: true }
-        });
-        if (!user) throw new Error('User not found');
+        const eventTitle = (order as any).event?.title ?? 'Event Ticket';
 
-        const reference = `EVF-ORD-${uuidv4().substring(0, 8).toUpperCase()}`;
-
-        // Amount in kobo (Paystack expects smallest currency unit)
-        const amountInKobo = Math.round(order.total * 100);
-
-        // Initialize Paystack transaction
+        // Create ZendFi payment — amount in standard units (not smallest unit)
         const payment = await PaymentService.initializeTransaction(
-            user.email,
-            amountInKobo,
-            reference,
-            callbackUrl,
-            { orderId, eventTitle: (order as any).event?.title }
+            order.total,
+            order.currency,
+            `${eventTitle} — Order #${orderId.substring(0, 8).toUpperCase()}`,
+            { orderId, eventTitle }
         );
 
+        // Store the ZendFi payment ID as our reference
         await prisma.bookingOrder.update({
             where: { id: orderId },
             data: {
                 paymentMethod,
-                paymentReference: reference,
+                paymentReference: payment.reference,
                 paymentStatus: 'PROCESSING'
             }
         });
@@ -345,7 +335,6 @@ export class BookingService {
         return {
             paymentUrl: payment.paymentUrl,
             reference: payment.reference,
-            accessCode: payment.accessCode,
             expiresAt: order.expiresAt?.toISOString(),
         };
     }
@@ -490,49 +479,40 @@ export class BookingService {
     }
 
     /**
-     * Handle Paystack payment webhook (charge.success event)
+     * Handle ZendFi payment webhook.
+     *
+     * Relevant events:
+     *   PaymentConfirmed — payment settled; confirm the order
+     *   PaymentFailed    — payment failed; mark as failed
+     *   PaymentExpired   — payment timed out; mark as failed
+     *
+     * Signature is already verified by the controller before this is called.
      */
-    static async handlePaymentWebhook(event: string, data: any) {
-        if (event !== 'charge.success') {
+    static async handlePaymentWebhook(event: string, payment: any) {
+        const paymentId = payment?.id;
+        if (!paymentId) throw new Error('Missing payment ID in webhook payload');
+
+        const order = await prisma.bookingOrder.findFirst({
+            where: { paymentReference: paymentId }
+        });
+
+        if (!order) {
+            // Could be a payment not initiated through this system — ignore silently
             return { received: true };
         }
 
-        const reference = data?.reference;
-        if (!reference) throw new Error('Missing payment reference');
-
-        const order = await prisma.bookingOrder.findFirst({
-            where: { paymentReference: reference }
-        });
-
-        if (!order) throw new Error('Order not found for reference');
-
-        // Verify the transaction via Paystack API for extra security
-        try {
-            const verification = await PaymentService.verifyTransaction(reference);
-
-            if (verification.status === 'success') {
-                await prisma.bookingOrder.update({
-                    where: { id: order.id },
-                    data: {
-                        paymentStatus: 'COMPLETED',
-                        paidAt: new Date()
-                    }
-                });
-            } else {
-                await prisma.bookingOrder.update({
-                    where: { id: order.id },
-                    data: { paymentStatus: 'FAILED' }
-                });
-            }
-        } catch (verifyError) {
-            console.error('Payment verification failed:', verifyError);
-            // Still mark as completed based on webhook (Paystack is the source of truth)
+        if (event === 'PaymentConfirmed') {
             await prisma.bookingOrder.update({
                 where: { id: order.id },
                 data: {
                     paymentStatus: 'COMPLETED',
                     paidAt: new Date()
                 }
+            });
+        } else if (event === 'PaymentFailed' || event === 'PaymentExpired') {
+            await prisma.bookingOrder.update({
+                where: { id: order.id },
+                data: { paymentStatus: 'FAILED' }
             });
         }
 
