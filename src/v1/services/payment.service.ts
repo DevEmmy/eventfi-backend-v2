@@ -41,13 +41,16 @@ export class PaymentService {
         // ZendFi only supports USD/EUR/GBP — default to USD for unsupported currencies (e.g. NGN)
         const zendfiCurrency = (['USD', 'EUR', 'GBP'].includes(currency) ? currency : 'USD') as Currency;
 
-        const payment = await zendfi.createPayment({
+        const payload = {
             amount,
             currency: zendfiCurrency,
             token: 'USDC',
             description,
             metadata,
-        });
+        };
+        console.log('[ZendFi] createPayment payload:', JSON.stringify(payload, null, 2));
+
+        const payment = await zendfi.createPayment(payload);
 
         return {
             paymentUrl: (payment as any).payment_url,
