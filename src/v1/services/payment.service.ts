@@ -1,4 +1,4 @@
-import { ZendFiClient, type Currency } from '@zendfi/sdk';
+import { ZendFiClient, type Currency, type PaymentToken } from '@zendfi/sdk';
 import crypto from 'crypto';
 
 const ZENDFI_API_KEY = process.env.ZENDFI_API_KEY;
@@ -9,6 +9,29 @@ if (!ZENDFI_API_KEY) {
 }
 
 const zendfi = ZENDFI_API_KEY ? new ZendFiClient({ apiKey: ZENDFI_API_KEY }) : null;
+
+/**
+ * Convert an amount from a source currency to USD using live rates.
+ * Falls back to a hardcoded NGN rate if the fetch fails.
+ */
+async function toUSD(amount: number, fromCurrency: string): Promise<number> {
+    if (fromCurrency === 'USD') return amount;
+
+    try {
+        const res = await fetch(`https://open.er-api.com/v6/latest/USD`);
+        const data = await res.json() as { rates: Record<string, number> };
+        const rate = data.rates[fromCurrency];
+        if (!rate) throw new Error(`No rate found for ${fromCurrency}`);
+        const usdAmount = parseFloat((amount / rate).toFixed(2));
+        console.log(`[ZendFi] Converted ${amount} ${fromCurrency} → $${usdAmount} USD (rate: ${rate})`);
+        return usdAmount;
+    } catch (err) {
+        console.error('[ZendFi] Exchange rate fetch failed, using fallback NGN rate:', err);
+        // Fallback: approximate NGN/USD rate — update periodically or wire up a paid FX API
+        const fallbackNGNRate = 1600;
+        return parseFloat((amount / fallbackNGNRate).toFixed(2));
+    }
+}
 
 export interface PaymentInitResult {
     paymentUrl: string;
@@ -38,13 +61,14 @@ export class PaymentService {
             throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
         }
 
-        // ZendFi only supports USD/EUR/GBP — default to USD for unsupported currencies (e.g. NGN)
+        // ZendFi only supports USD/EUR/GBP — convert unsupported currencies (e.g. NGN) to USD
         const zendfiCurrency = (['USD', 'EUR', 'GBP'].includes(currency) ? currency : 'USD') as Currency;
+        const usdAmount = await toUSD(amount, currency);
 
         const payload = {
-            amount,
+            amount: usdAmount,
             currency: zendfiCurrency,
-            token: 'USDC',
+            token: 'USDC' as PaymentToken,
             description,
             metadata,
         };
