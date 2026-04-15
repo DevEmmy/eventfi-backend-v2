@@ -16,7 +16,7 @@ app.use(helmet());
 app.use(cors({
     origin: process.env.CORS_ORIGINS
         ? process.env.CORS_ORIGINS.split(',')
-        : ['https://eventfi.live', 'https://www.eventfi.live', 'http://localhost:3000'],
+        : ['https://eventfi.live', 'https://www.eventfi.live', 'http://localhost:3000', 'http://localhost:3001'],
 }));
 
 // Body parsing with size limits
