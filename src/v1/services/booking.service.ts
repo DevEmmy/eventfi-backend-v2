@@ -1,7 +1,7 @@
 import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatService } from './chat.service';
-import { PaymentService } from './payment.service';
+import { PaymentService, CustomerObject } from './payment.service';
 import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
 import { NotificationService } from './notification.service';
@@ -314,11 +314,28 @@ export class BookingService {
 
         const eventTitle = (order as any).event?.title ?? 'Event Ticket';
 
-        // Create ZendFi payment — amount in standard units (not smallest unit)
+        // Build customer object from primary attendee (or fall back to the user's account email)
+        const primaryAttendee = await prisma.attendee.findFirst({
+            where: { orderId },
+            orderBy: { createdAt: 'asc' },
+            select: { name: true, email: true, phone: true }
+        });
+        const user = await prisma.user.findUnique({
+            where: { id: order.userId },
+            select: { email: true, displayName: true }
+        });
+        const customer: CustomerObject = {
+            email: primaryAttendee?.email ?? user?.email ?? '',
+            name: primaryAttendee?.name ?? user?.displayName ?? undefined,
+            phone: primaryAttendee?.phone ?? undefined,
+        };
+
+        // Create ZendFi payment
         const payment = await PaymentService.initializeTransaction(
             order.total,
             order.currency,
             `${eventTitle} — Order #${orderId.substring(0, 8).toUpperCase()}`,
+            customer,
             { orderId, eventTitle }
         );
 

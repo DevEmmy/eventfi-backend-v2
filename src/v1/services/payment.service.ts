@@ -1,6 +1,12 @@
 import { ZendFiClient, type Currency, type PaymentToken } from '@zendfi/sdk';
 import crypto from 'crypto';
 
+export interface CustomerObject {
+    email: string;
+    name?: string;
+    phone?: string;
+}
+
 const ZENDFI_API_KEY = process.env.ZENDFI_API_KEY;
 const ZENDFI_WEBHOOK_SECRET = process.env.ZENDFI_WEBHOOK_SECRET;
 
@@ -55,26 +61,29 @@ export class PaymentService {
         amount: number,
         currency: string,
         description: string,
+        customer: CustomerObject,
         metadata?: Record<string, any>
     ): Promise<PaymentInitResult> {
         if (!zendfi) {
             throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
         }
 
-        // ZendFi only supports USD/EUR/GBP — convert unsupported currencies (e.g. NGN) to USD
-        const zendfiCurrency = (['USD', 'EUR', 'GBP'].includes(currency) ? currency : 'USD') as Currency;
+        // Convert NGN (or any unsupported currency) to USD for the `amount` field
         const usdAmount = await toUSD(amount, currency);
 
         const payload = {
             amount: usdAmount,
-            currency: zendfiCurrency,
+            currency: 'USD' as Currency,
             token: 'USDC' as PaymentToken,
             description,
+            onramp: true,         // enable NGN fiat on-ramp
+            amount_ngn: amount,   // original NGN amount shown to the customer
+            customer,             // pre-fills checkout — skips info collection step
             metadata,
         };
         console.log('[ZendFi] createPayment payload:', JSON.stringify(payload, null, 2));
 
-        const payment = await zendfi.createPayment(payload);
+        const payment = await (zendfi as any).createPayment(payload);
 
         return {
             paymentUrl: (payment as any).payment_url,
