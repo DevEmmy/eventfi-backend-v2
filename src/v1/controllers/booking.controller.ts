@@ -153,11 +153,13 @@ export class BookingController {
                 data: result,
             });
         } catch (error: any) {
-            const statusCode = error.message.includes('not found') ? 404 :
-                error.message.includes('free') ? 400 : 500;
+            const message = error.message ?? error?.response?.data?.message ?? 'Failed to initialize payment';
+            console.error('[initializePayment] error:', message, error);
+            const statusCode = message.includes('not found') ? 404 :
+                message.includes('free') ? 400 : 500;
             return res.status(statusCode).json({
                 status: 'error',
-                message: error.message || 'Failed to initialize payment',
+                message,
             });
         }
     }

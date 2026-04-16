@@ -81,13 +81,27 @@ export class PaymentService {
             customer,             // pre-fills checkout — skips info collection step
             metadata,
         };
-        console.log('[ZendFi] createPayment payload:', JSON.stringify(payload, null, 2));
+        console.log('[ZendFi] createPaymentLink payload:', JSON.stringify(payload, null, 2));
 
-        const payment = await zendfi.createPaymentLink(payload);
+        let payment: any;
+        try {
+            payment = await (zendfi as any).createPaymentLink(payload);
+            console.log('[ZendFi] createPaymentLink response:', JSON.stringify(payment, null, 2));
+        } catch (err: any) {
+            console.error('[ZendFi] createPaymentLink threw:', err?.message ?? err);
+            console.error('[ZendFi] error status:', err?.status ?? err?.statusCode ?? 'n/a');
+            console.error('[ZendFi] error body:', JSON.stringify(err?.response?.data ?? err?.body ?? err, null, 2));
+            throw err;
+        }
+
+        if (!payment?.payment_url && !payment?.url) {
+            console.error('[ZendFi] unexpected response shape:', JSON.stringify(payment, null, 2));
+            throw new Error('ZendFi did not return a payment URL');
+        }
 
         return {
-            paymentUrl: (payment as any).payment_url,
-            reference: (payment as any).id,
+            paymentUrl: payment.payment_url ?? payment.url,
+            reference: payment.id,
         };
     }
 
