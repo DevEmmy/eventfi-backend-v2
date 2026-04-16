@@ -3,15 +3,27 @@ import { EMAIL_QUEUE_NAME } from './email.queue';
 import { EmailService } from '../services/email.service';
 import { EmailTemplates } from '../utils/email.templates';
 
-const redisUrl = process.env.REDIS_URL;
-const connection = redisUrl
-    ? { url: redisUrl }
-    : {
+function buildConnection() {
+    const url = process.env.REDIS_URL;
+    if (url) {
+        const parsed = new URL(url);
+        return {
+            host: parsed.hostname,
+            port: parseInt(parsed.port) || 6379,
+            password: parsed.password || undefined,
+            username: parsed.username || undefined,
+            tls: parsed.protocol === 'rediss:' ? {} : undefined,
+        };
+    }
+    return {
         host: process.env.REDIS_HOST || '127.0.0.1',
         port: parseInt(process.env.REDIS_PORT || '6379'),
-        password: process.env.REDIS_PASSWORD,
+        password: process.env.REDIS_PASSWORD || undefined,
         tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
     };
+}
+
+const connection = buildConnection();
 
 interface EmailJobData {
     type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification';
@@ -101,7 +113,7 @@ export const emailWorker = new Worker<EmailJobData>(
         }
     },
     {
-        connection: redisUrl ? new URL(redisUrl) as any : connection,
+        connection,
         concurrency: 5,
         limiter: {
             max: 10,
