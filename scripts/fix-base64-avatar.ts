@@ -5,21 +5,27 @@
  *   npx ts-node scripts/fix-base64-avatar.ts <userId>
  *
  * Example:
- *   npx ts-node scripts/fix-base64-avatar.ts clxyz1234567890abcdef
- *
- * The script will:
- *  1. Load the user from the database.
- *  2. Verify the avatar field is a base64 data URI.
- *  3. Upload it to Cloudinary under the `avatars/` folder with a stable
- *     public_id of `user_<userId>` so future re-uploads overwrite the same asset.
- *  4. Update the user's avatar field with the Cloudinary HTTPS URL.
+ *   npx ts-node scripts/fix-base64-avatar.ts 2d55b352-c488-4386-addc-1a29a291b27b
  */
 
-import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
-import { CloudinaryService } from '../src/v1/utils/cloudinary.service';
+// ── dotenv must be loaded as executable code (not an import side-effect)
+// so it runs BEFORE the pg.Pool is constructed below.
+import path from 'path';
+import { config as loadEnv } from 'dotenv';
+loadEnv({ path: path.resolve(__dirname, '../.env') });
 
-const prisma = new PrismaClient();
+// ── DB — self-contained so we don't inherit any cached module state
+import pg from 'pg';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
+
+// Pool is created here (after loadEnv), so DATABASE_URL is guaranteed to be set
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const prisma = new PrismaClient({ adapter });
+
+// ── Cloudinary
+import { CloudinaryService } from '../src/v1/utils/cloudinary.service';
 
 async function main() {
     const userId = process.argv[2];
@@ -74,4 +80,7 @@ main()
         console.error('Script failed:', err);
         process.exit(1);
     })
-    .finally(() => prisma.$disconnect());
+    .finally(async () => {
+        await prisma.$disconnect();
+        await pool.end();
+    });
