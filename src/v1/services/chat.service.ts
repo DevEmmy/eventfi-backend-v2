@@ -44,7 +44,6 @@ export class ChatService {
         });
 
         if (!chat) {
-            // Create chat for the event
             chat = await prisma.eventChat.create({
                 data: { eventId },
                 include: {
@@ -54,70 +53,52 @@ export class ChatService {
             });
         }
 
-        // Determine user's role
-        let userRole: string = 'MEMBER';
-        if (chat.event.organizerId === userId) {
-            userRole = 'ORGANIZER';
-        } else {
-            const teamMember = await prisma.eventTeamMember.findFirst({
-                where: { eventId, userId, status: 'ACTIVE' }
-            });
-            if (teamMember) {
-                userRole = teamMember.role === 'CO_HOST' || teamMember.role === 'MANAGER' ? 'MODERATOR' : 'MEMBER';
-            }
-        }
+        const isOrganizer = chat.event.organizerId === userId;
+        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-        // Chat is read-only when the organizer has disabled it
-        // Users can still join and read messages, but cannot send new ones
+        // Run role lookup, existing-member check, and online count in parallel
+        const [teamMember, existingMember, onlineCount] = await Promise.all([
+            isOrganizer
+                ? Promise.resolve(null)
+                : prisma.eventTeamMember.findFirst({ where: { eventId, userId, status: 'ACTIVE' } }),
+            prisma.chatMember.findUnique({ where: { chatId_userId: { chatId: chat.id, userId } } }),
+            prisma.chatMember.count({ where: { chatId: chat.id, lastSeenAt: { gte: fiveMinutesAgo } } }),
+        ]);
+
+        let userRole = isOrganizer
+            ? 'ORGANIZER'
+            : teamMember
+                ? (teamMember.role === 'CO_HOST' || teamMember.role === 'MANAGER' ? 'MODERATOR' : 'MEMBER')
+                : 'MEMBER';
+
         const isReadOnly = !chat.isActive;
 
-        // Check if user has a ticket (for membersOnly chats)
-        let hasTicket = false;
+        // Check ticket for members-only chats (only when needed)
         if (chat.membersOnly && userRole === 'MEMBER') {
             const attendee = await prisma.attendee.findFirst({
-                where: {
-                    order: { eventId, userId, status: 'CONFIRMED' }
-                }
+                where: { order: { eventId, userId, status: 'CONFIRMED' } }
             });
-            hasTicket = !!attendee;
-
-            if (!hasTicket) {
+            if (!attendee) {
                 return {
                     chat: this.formatChatInfo(chat, userRole, false),
                     canJoin: false,
                     reason: 'NO_TICKET'
                 };
             }
-        } else {
-            hasTicket = true;
         }
 
-        // Auto-join the user
-        let member = await prisma.chatMember.findUnique({
-            where: { chatId_userId: { chatId: chat.id, userId } }
-        });
-
-        if (!member) {
+        // Auto-join or update last-seen
+        let member: any;
+        if (!existingMember) {
             member = await prisma.chatMember.create({
-                data: {
-                    chatId: chat.id,
-                    userId,
-                    role: userRole as any
-                }
+                data: { chatId: chat.id, userId, role: userRole as any }
             });
         } else {
-            // Update last seen
-            await prisma.chatMember.update({
-                where: { id: member.id },
+            member = await prisma.chatMember.update({
+                where: { id: existingMember.id },
                 data: { lastSeenAt: new Date() }
             });
         }
-
-        // Get online count (active in last 5 minutes)
-        const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-        const onlineCount = await prisma.chatMember.count({
-            where: { chatId: chat.id, lastSeenAt: { gte: fiveMinutesAgo } }
-        });
 
         return {
             chat: {

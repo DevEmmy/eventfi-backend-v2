@@ -2,10 +2,9 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { prisma } from '../config/database';
-import { EmailService } from './email.service';
-import { EmailTemplates } from '../utils/email.templates';
 import { CloudinaryService } from '../utils/cloudinary.service';
 import { invalidateUserCache } from '../middlewares/auth.middleware';
+import { emailQueue } from '../jobs/email.queue';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
 if (!process.env.JWT_SECRET) {
@@ -47,13 +46,14 @@ export class AuthService {
             { expiresIn: JWT_EXPIRES_IN as any }
         );
 
-        // Send verification email directly
+        // Queue verification email via BullMQ
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
-        const template = EmailTemplates.emailVerification(verifyUrl);
-        EmailService.send(user.email, template.subject, template.html, template.text).catch(err =>
-            console.error('Failed to send verification email:', err)
-        );
+        emailQueue.add('email-verification', {
+            type: 'email-verification',
+            to: user.email,
+            verifyUrl,
+        }).catch(err => console.error('Failed to queue verification email:', err));
 
         return {
             user: {
@@ -127,9 +127,9 @@ export class AuthService {
             },
         });
 
-        // Send password reset email
+        // Queue password reset email via BullMQ
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
-        await EmailService.sendPasswordResetEmail(user.email, resetUrl);
+        await emailQueue.add('password-reset', { type: 'password-reset', to: user.email, resetUrl });
 
         return { message: 'If an account exists with this email, a reset link has been sent.' };
     }
@@ -305,9 +305,13 @@ export class AuthService {
             { expiresIn: JWT_EXPIRES_IN as any }
         );
 
-        // Send welcome email for brand new users
+        // Queue welcome email for brand new users
         if (!user.username) {
-            EmailService.sendWelcomeEmail(user.email, user.displayName || user.email.split('@')[0]);
+            emailQueue.add('welcome', {
+                type: 'welcome',
+                to: user.email,
+                name: user.displayName || user.email.split('@')[0],
+            }).catch(err => console.error('Failed to queue welcome email:', err));
         }
 
         return {
@@ -348,11 +352,12 @@ export class AuthService {
             },
         });
 
-        // Send welcome email now that they're verified
-        const welcomeTemplate = EmailTemplates.welcome(user.displayName || user.email.split('@')[0]);
-        EmailService.send(user.email, welcomeTemplate.subject, welcomeTemplate.html, welcomeTemplate.text).catch(err =>
-            console.error('Failed to send welcome email:', err)
-        );
+        // Queue welcome email now that they're verified
+        emailQueue.add('welcome', {
+            type: 'welcome',
+            to: user.email,
+            name: user.displayName || user.email.split('@')[0],
+        }).catch(err => console.error('Failed to queue welcome email:', err));
 
         return { message: 'Email verified successfully' };
     }
@@ -381,10 +386,11 @@ export class AuthService {
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const verifyUrl = `${frontendUrl}/auth/verify-email?token=${verificationToken}`;
-        const resendTemplate = EmailTemplates.emailVerification(verifyUrl);
-        EmailService.send(user.email, resendTemplate.subject, resendTemplate.html, resendTemplate.text).catch(err =>
-            console.error('Failed to send verification email:', err)
-        );
+        emailQueue.add('email-verification', {
+            type: 'email-verification',
+            to: user.email,
+            verifyUrl,
+        }).catch(err => console.error('Failed to queue verification email:', err));
 
         return { message: 'Verification email sent' };
     }

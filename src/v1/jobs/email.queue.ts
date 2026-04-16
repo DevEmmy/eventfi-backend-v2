@@ -31,6 +31,6 @@ export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
             delay: 1000,
         },
         removeOnComplete: true,
-        removeOnFail: false,
+        removeOnFail: { count: 100 }, // keep last 100 failed jobs for debugging; don't retain indefinitely
     },
 });

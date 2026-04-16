@@ -23,11 +23,20 @@ async function fetchUser(userId: string) {
         // Redis unavailable — fall through to DB
     }
 
-    // 2. Hit the DB
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    // 2. Hit the DB — exclude passwordHash so it is never stored in Redis
+    const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: {
+            id: true, email: true, username: true, displayName: true,
+            avatar: true, bio: true, location: true, website: true,
+            socialLinks: true, interests: true, roles: true,
+            isVerified: true, googleId: true,
+            createdAt: true, updatedAt: true, lastLoginAt: true,
+        },
+    });
     if (!user) return null;
 
-    // 3. Warm the cache (non-blocking)
+    // 3. Warm the cache (non-blocking) — no passwordHash ever touches Redis
     redis.set(`user:${userId}`, JSON.stringify(user), 'EX', USER_CACHE_TTL).catch(() => {});
 
     return user;

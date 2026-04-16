@@ -2,6 +2,20 @@ import { prisma } from '../config/database';
 import { EventCategory, EventStatus, EventPrivacy, TicketType, Prisma } from '@prisma/client';
 import { ChatService } from './chat.service';
 import { EmailService } from './email.service';
+import { CloudinaryService } from '../utils/cloudinary.service';
+import redis from '../config/redis';
+
+const EVENT_CACHE_TTL = 300;       // 5 min — individual event pages
+const TRENDING_CACHE_TTL = 120;    // 2 min — trending list changes more often
+
+async function invalidateEventCache(eventId: string) {
+    try { await redis.del(`event:${eventId}`); } catch { /* Redis unavailable */ }
+    // Trending list may include this event — wipe all trending keys
+    try {
+        const keys = await redis.keys('events:trending:*');
+        if (keys.length) await redis.del(...keys);
+    } catch { /* Redis unavailable */ }
+}
 
 // Interfaces matching the user's request structure (for input)
 export interface CreateEventInput {
@@ -57,6 +71,20 @@ export interface CreateEventInput {
 
 export class EventService {
     static async create(userId: string, data: CreateEventInput) {
+        // Upload any base64 media to Cloudinary before writing to DB
+        if (data.media.coverImage) {
+            data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
+                data.media.coverImage, 'events', `event_cover_${userId}_${Date.now()}`
+            );
+        }
+        if (data.media.gallery && data.media.gallery.length > 0) {
+            data.media.gallery = await Promise.all(
+                data.media.gallery.map((img, i) =>
+                    CloudinaryService.ensureCloudinaryUrl(img, 'gallery', `event_gallery_${userId}_${Date.now()}_${i}`)
+                )
+            );
+        }
+
         // Map nested input to flattened schema
         // Auto-generate slug from title if not provided
         const slug = data.slug || data.title.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
@@ -233,6 +261,12 @@ export class EventService {
     }
 
     static async findOne(id: string) {
+        // Try Redis cache first
+        try {
+            const cached = await redis.get(`event:${id}`);
+            if (cached) return JSON.parse(cached);
+        } catch { /* Redis unavailable */ }
+
         const event = await prisma.event.findUnique({
             where: { id },
             include: {
@@ -254,6 +288,8 @@ export class EventService {
         });
 
         if (!event) throw new Error('Event not found');
+
+        redis.set(`event:${id}`, JSON.stringify(event), 'EX', EVENT_CACHE_TTL).catch(() => {});
         return event;
     }
 
@@ -262,6 +298,20 @@ export class EventService {
 
         if (!event) throw new Error('Event not found');
         if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
+
+        // Upload any base64 media to Cloudinary before writing to DB
+        if (data.media?.coverImage) {
+            data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
+                data.media.coverImage, 'events', `event_cover_${id}`
+            );
+        }
+        if (data.media?.gallery && data.media.gallery.length > 0) {
+            data.media.gallery = await Promise.all(
+                data.media.gallery.map((img, i) =>
+                    CloudinaryService.ensureCloudinaryUrl(img, 'gallery', `event_gallery_${id}_${i}`)
+                )
+            );
+        }
 
         // Construct update data
         // Use explicit slug if provided, otherwise regenerate from title if title changed
@@ -445,6 +495,9 @@ export class EventService {
             }
         }
 
+        // Bust the cache so reads immediately see the updated event
+        invalidateEventCache(id).catch(() => {});
+
         return updatedEvent;
     }
 
@@ -463,6 +516,7 @@ export class EventService {
             where: { id }
         });
 
+        invalidateEventCache(id).catch(() => {});
         return { message: 'Event deleted successfully' };
     }
 
@@ -613,6 +667,12 @@ export class EventService {
      * Currently returns public events sorted by popularity (attendees + favorites)
      */
     static async getTrending(limit: number = 10) {
+        const cacheKey = `events:trending:${limit}`;
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached) return JSON.parse(cached);
+        } catch { /* Redis unavailable */ }
+
         const events = await prisma.event.findMany({
             where: {
                 privacy: EventPrivacy.PUBLIC,
@@ -634,6 +694,7 @@ export class EventService {
             }
         });
 
+        redis.set(cacheKey, JSON.stringify(events), 'EX', TRENDING_CACHE_TTL).catch(() => {});
         return events;
     }
 

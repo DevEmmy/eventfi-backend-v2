@@ -2,9 +2,8 @@ import { prisma } from '../config/database';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatService } from './chat.service';
 import { PaymentService, CustomerObject } from './payment.service';
-import { EmailService } from './email.service';
-import { EmailTemplates } from '../utils/email.templates';
 import { NotificationService } from './notification.service';
+import { emailQueue } from '../jobs/email.queue';
 
 const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
 const ORDER_EXPIRY_MINUTES = 30;
@@ -122,19 +121,23 @@ export class BookingService {
         if (!event) throw new Error('Event not found');
 
         // Validate tickets and calculate totals
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        for (const item of items) {
+            if (!item.ticketTypeId || !uuidRegex.test(item.ticketTypeId)) {
+                throw new Error(`Invalid ticketTypeId: ${item.ticketTypeId}`);
+            }
+        }
+
+        // Batch-fetch all requested tickets in one query
+        const ticketTypeIds = items.map(i => i.ticketTypeId);
+        const fetchedTickets = await prisma.ticket.findMany({ where: { id: { in: ticketTypeIds } } });
+        const ticketMap = new Map(fetchedTickets.map(t => [t.id, t]));
+
         let subtotal = 0;
         const orderItems: any[] = [];
 
         for (const item of items) {
-            // Validate UUID inputs to prevent database errors
-            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-            if (!item.ticketTypeId || !uuidRegex.test(item.ticketTypeId)) {
-                throw new Error(`Invalid ticketTypeId: ${item.ticketTypeId}`);
-            }
-
-            const ticket = await prisma.ticket.findUnique({
-                where: { id: item.ticketTypeId }
-            });
+            const ticket = ticketMap.get(item.ticketTypeId);
 
             if (!ticket) throw new Error(`Ticket type ${item.ticketTypeId} not found`);
             if (ticket.eventId !== eventId) throw new Error('Ticket does not belong to this event');
@@ -157,8 +160,8 @@ export class BookingService {
 
         const serviceFee = Math.round(subtotal * SERVICE_FEE_PERCENT);
         const total = subtotal + serviceFee;
-        const currency = orderItems.length > 0 ?
-            (await prisma.ticket.findUnique({ where: { id: items[0].ticketTypeId } }))?.currency || 'NGN' : 'NGN';
+        // Currency comes from the already-fetched ticket map — no extra DB round-trip
+        const currency = ticketMap.get(items[0].ticketTypeId)?.currency || 'NGN';
 
         // Create the order
         const expiresAt = new Date(Date.now() + ORDER_EXPIRY_MINUTES * 60 * 1000);
@@ -457,7 +460,7 @@ export class BookingService {
             console.error('Failed to create booking notifications:', error);
         }
 
-        // Send ticket confirmation emails to each attendee
+        // Queue ticket confirmation emails for each attendee via BullMQ
         try {
             const event = await prisma.event.findUnique({
                 where: { id: order.eventId },
@@ -471,15 +474,14 @@ export class BookingService {
 
                 for (const ticket of tickets) {
                     if (ticket.email) {
-                        const template = EmailTemplates.ticketConfirmation({
+                        emailQueue.add('ticket-confirmation', {
+                            type: 'ticket-confirmation',
+                            to: ticket.email,
                             eventTitle: event.title,
                             userTitle: ticket.name || 'Attendee',
                             startDate: eventDate,
                             venue,
-                        });
-                        EmailService.send(ticket.email, template.subject, template.html, template.text).catch(err =>
-                            console.error('Failed to send ticket confirmation email:', err)
-                        );
+                        }).catch(err => console.error('Failed to queue ticket confirmation email:', err));
                     }
                 }
             }

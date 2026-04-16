@@ -1,6 +1,8 @@
 import { prisma } from '../config/database';
-import { EmailService } from './email.service';
-import { EmailTemplates } from '../utils/email.templates';
+import { emailQueue } from '../jobs/email.queue';
+import redis from '../config/redis';
+
+const ACCESS_CACHE_TTL = 120; // 2 min — team membership rarely changes mid-session
 
 interface TeamPermissions {
     canEdit: boolean;
@@ -21,6 +23,23 @@ export class ManageService {
      * Check if user has access to manage event
      */
     static async checkEventAccess(userId: string, eventId: string, requiredPermission?: keyof TeamPermissions) {
+        const cacheKey = `event_access:${eventId}:${userId}`;
+
+        // Try cache (no requiredPermission check yet — we always store full access object)
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached) {
+                const access = JSON.parse(cached) as { role: string; permissions: TeamPermissions };
+                if (requiredPermission && !access.permissions[requiredPermission]) {
+                    throw new Error('Insufficient permissions');
+                }
+                return access;
+            }
+        } catch (e: any) {
+            if (e.message === 'Insufficient permissions') throw e;
+            // Redis unavailable — fall through to DB
+        }
+
         const event = await prisma.event.findUnique({
             where: { id: eventId },
             select: { organizerId: true }
@@ -28,25 +47,29 @@ export class ManageService {
 
         if (!event) throw new Error('Event not found');
 
-        // Check if user is organizer
+        let access: { role: string; permissions: TeamPermissions };
+
         if (event.organizerId === userId) {
-            return { role: 'ORGANIZER', permissions: ROLE_PERMISSIONS.ORGANIZER };
+            access = { role: 'ORGANIZER', permissions: ROLE_PERMISSIONS.ORGANIZER };
+        } else {
+            const teamMember = await prisma.eventTeamMember.findFirst({
+                where: { eventId, userId, status: 'ACTIVE' }
+            });
+
+            if (!teamMember) throw new Error('Unauthorized');
+
+            const permissions = ROLE_PERMISSIONS[teamMember.role] || ROLE_PERMISSIONS.ASSISTANT;
+            access = { role: teamMember.role, permissions };
         }
 
-        // Check if user is team member
-        const teamMember = await prisma.eventTeamMember.findFirst({
-            where: { eventId, userId, status: 'ACTIVE' }
-        });
+        // Cache the result (non-blocking)
+        redis.set(cacheKey, JSON.stringify(access), 'EX', ACCESS_CACHE_TTL).catch(() => {});
 
-        if (!teamMember) throw new Error('Unauthorized');
-
-        const permissions = ROLE_PERMISSIONS[teamMember.role] || ROLE_PERMISSIONS.ASSISTANT;
-
-        if (requiredPermission && !permissions[requiredPermission]) {
+        if (requiredPermission && !access.permissions[requiredPermission]) {
             throw new Error('Insufficient permissions');
         }
 
-        return { role: teamMember.role, permissions };
+        return access;
     }
 
     /**
@@ -682,15 +705,14 @@ export class ManageService {
             }
 
             for (const email of attendeeEmails) {
-                const template = EmailTemplates.eventCancellation({
+                emailQueue.add('event-cancellation', {
+                    type: 'event-cancellation',
+                    to: email,
                     eventTitle: event.title,
                     eventDate,
                     reason,
                     refundPolicy,
-                });
-                EmailService.send(email, template.subject, template.html, template.text).catch(err =>
-                    console.error('Failed to send cancellation email:', err)
-                );
+                }).catch(err => console.error('Failed to queue cancellation email:', err));
             }
             attendeesNotified = attendeeEmails.size;
         }
@@ -748,18 +770,20 @@ export class ManageService {
             };
         }
 
-        // 5. Send emails in chunks of 10 to respect SMTP rate limits
+        // 5. Enqueue announcement jobs in batches of 10 to stay within BullMQ rate limit
         const CHUNK_SIZE = 10;
         for (let i = 0; i < attendees.length; i += CHUNK_SIZE) {
             const chunk = attendees.slice(i, i + CHUNK_SIZE);
             await Promise.all(
                 chunk.map(attendee =>
-                    EmailService.sendAnnouncement(attendee.email, {
+                    emailQueue.add('announcement', {
+                        type: 'announcement',
+                        to: attendee.email,
                         eventTitle: event.title,
                         subject,
                         content: body,
                         organizerName: event.organizer.displayName || 'Event Organizer',
-                    }).catch(err => console.error(`[BulkEmail] Failed to send to ${attendee.email}:`, err))
+                    }).catch(err => console.error(`[BulkEmail] Failed to queue for ${attendee.email}:`, err))
                 )
             );
         }

@@ -3,6 +3,13 @@ import { v4 as uuidv4 } from 'uuid';
 import { ManageService } from './manage.service';
 import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
+import redis from '../config/redis';
+
+/** Bust the checkEventAccess cache for a specific user+event combination. */
+async function invalidateAccessCache(eventId: string, userId: string | null | undefined) {
+    if (!userId) return;
+    try { await redis.del(`event_access:${eventId}:${userId}`); } catch { /* non-critical */ }
+}
 
 const ROLE_PERMISSIONS: Record<string, any> = {
     ORGANIZER: { canEdit: true, canManageAttendees: true, canViewAnalytics: true, canManageTeam: true },
@@ -187,6 +194,9 @@ export class TeamService {
             include: { user: { select: { id: true, displayName: true, email: true, avatar: true } } }
         });
 
+        // Bust the access cache so the updated role takes effect immediately
+        invalidateAccessCache(eventId, updated.userId).catch(() => {});
+
         return {
             id: updated.id,
             userId: updated.userId,
@@ -214,6 +224,9 @@ export class TeamService {
         if (member.eventId !== eventId) throw new Error('Team member does not belong to this event');
 
         await prisma.eventTeamMember.delete({ where: { id: memberId } });
+
+        // Bust the access cache so revocation takes effect immediately
+        invalidateAccessCache(eventId, member.userId).catch(() => {});
 
         return { message: 'Team member removed' };
     }
@@ -289,6 +302,9 @@ export class TeamService {
             where: { id: member.id },
             data: { userId, status: 'ACTIVE', inviteToken: null }
         });
+
+        // New member is now ACTIVE — bust any stale denied-access cache entry
+        invalidateAccessCache(member.eventId, userId).catch(() => {});
 
         return { message: 'Invitation accepted', eventId: member.eventId };
     }

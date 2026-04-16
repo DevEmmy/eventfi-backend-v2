@@ -3,11 +3,21 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import v1Routes from './v1/routes';
 import cors from 'cors';
+import compression from 'compression';
 
 const app = express();
 
 // Trust proxy (required behind reverse proxies like Render, Railway, etc.)
 app.set('trust proxy', 1);
+
+// Gzip compression (skip for already-compressed images/videos)
+app.use(compression({
+    filter: (req, res) => {
+        if (req.headers['x-no-compression']) return false;
+        return compression.filter(req, res);
+    },
+    level: 6,
+}));
 
 // Security headers
 app.use(helmet());

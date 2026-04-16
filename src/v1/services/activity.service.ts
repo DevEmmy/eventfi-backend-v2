@@ -1,5 +1,8 @@
 import { prisma } from '../config/database';
 import { ActivityType, ActivityStatus, OrderStatus } from '@prisma/client';
+import redis from '../config/redis';
+
+const LEADERBOARD_TTL = 5; // seconds — tolerable staleness during applause bursts
 
 export class ActivityService {
     // Create a new activity for an event (organizer only)
@@ -162,31 +165,43 @@ export class ActivityService {
             });
         }
 
-        // Fetch all entries with user info for leaderboard
-        const entries = await prisma.activityEntry.findMany({
-            where: { activityId },
-            include: {
-                user: { select: { id: true, displayName: true, username: true, avatar: true } }
-            }
-        });
+        // Build leaderboard from cache or DB (short TTL so bursts don't hammer the DB)
+        const cacheKey = `activity_leaderboard:${activityId}`;
+        let leaderboardData: { totalTaps: number; participantCount: number; leaderboard: any[] } | null = null;
 
-        const totalTaps = entries.reduce((sum, e) => {
-            const r = e.response as any;
-            return sum + (r?.taps || 1);
-        }, 0);
+        try {
+            const cached = await redis.get(cacheKey);
+            if (cached) leaderboardData = JSON.parse(cached);
+        } catch { /* Redis unavailable */ }
 
-        // Top-5 sorted by taps descending
-        const leaderboard = entries
-            .map(e => ({
-                userId: e.userId,
-                name: e.user.displayName || e.user.username || 'User',
-                avatar: e.user.avatar,
-                taps: (e.response as any)?.taps || 1,
-            }))
-            .sort((a, b) => b.taps - a.taps)
-            .slice(0, 5);
+        if (!leaderboardData) {
+            const entries = await prisma.activityEntry.findMany({
+                where: { activityId },
+                include: {
+                    user: { select: { id: true, displayName: true, username: true, avatar: true } }
+                }
+            });
 
-        return { totalTaps, participantCount: entries.length, myTaps, leaderboard };
+            const totalTaps = entries.reduce((sum, e) => {
+                const r = e.response as any;
+                return sum + (r?.taps || 1);
+            }, 0);
+
+            const leaderboard = entries
+                .map(e => ({
+                    userId: e.userId,
+                    name: e.user.displayName || e.user.username || 'User',
+                    avatar: e.user.avatar,
+                    taps: (e.response as any)?.taps || 1,
+                }))
+                .sort((a, b) => b.taps - a.taps)
+                .slice(0, 5);
+
+            leaderboardData = { totalTaps, participantCount: entries.length, leaderboard };
+            redis.set(cacheKey, JSON.stringify(leaderboardData), 'EX', LEADERBOARD_TTL).catch(() => {});
+        }
+
+        return { ...leaderboardData, myTaps };
     }
 
     // Get activity by id (basic)
