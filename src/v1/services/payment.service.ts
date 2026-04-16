@@ -83,7 +83,7 @@ export class PaymentService {
         };
         console.log('[ZendFi] createPayment payload:', JSON.stringify(payload, null, 2));
 
-        const payment = await (zendfi as any).createPayment(payload);
+        const payment = await zendfi.createPaymentLink(payload);
 
         return {
             paymentUrl: (payment as any).payment_url,
