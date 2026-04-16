@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { prisma } from '../config/database';
 import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
+import { CloudinaryService } from '../utils/cloudinary.service';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
 if (!process.env.JWT_SECRET) {
@@ -168,6 +169,17 @@ export class AuthService {
         website?: string;
         socialLinks?: { twitter?: string; instagram?: string; linkedin?: string; facebook?: string };
     }) {
+        // Upload avatar to Cloudinary when a base64 data URI is provided.
+        // Using a stable public_id keyed to the user means re-uploads overwrite
+        // the same Cloudinary asset rather than accumulating orphaned files.
+        if (data.avatar) {
+            data.avatar = await CloudinaryService.ensureCloudinaryUrl(
+                data.avatar,
+                'avatars',
+                `user_${userId}`,
+            );
+        }
+
         // Check if username is taken by another user
         if (data.username) {
             const existingUser = await prisma.user.findFirst({

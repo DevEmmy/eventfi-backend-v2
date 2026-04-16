@@ -106,6 +106,29 @@ export class ManageController {
     }
 
     /**
+     * GET /events/:eventId/revenue/export - Export orders as CSV
+     */
+    static async exportRevenue(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const { eventId } = req.params;
+
+            const csv = await ManageService.exportRevenue(eventId, userId);
+
+            res.setHeader('Content-Type', 'text/csv');
+            res.setHeader('Content-Disposition', `attachment; filename="revenue-${eventId}.csv"`);
+            return res.status(200).send(csv);
+        } catch (error: any) {
+            const statusCode = error.message.includes('not found') ? 404 :
+                error.message.includes('Unauthorized') || error.message.includes('permissions') ? 403 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to export revenue'
+            });
+        }
+    }
+
+    /**
      * POST /events/:eventId/attendees/:attendeeId/check-in - Check-in attendee
      */
     static async checkInAttendee(req: Request, res: Response) {

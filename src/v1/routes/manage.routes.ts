@@ -8,6 +8,9 @@ const router = Router();
 router.get('/:eventId/manage', authenticate, ManageController.getManageData);
 router.get('/:eventId/analytics', authenticate, ManageController.getAnalytics);
 
+// Revenue export
+router.get('/:eventId/revenue/export', authenticate, ManageController.exportRevenue);
+
 // Attendee management
 router.get('/:eventId/attendees', authenticate, ManageController.getAttendees);
 router.post('/:eventId/attendees/:attendeeId/check-in', authenticate, ManageController.checkInAttendee);

@@ -26,7 +26,12 @@ export const googleAuthSchema = z.object({
 export const updateProfileSchema = z.object({
     username: z.string().min(3).max(30).optional(),
     displayName: z.string().min(1).max(100).optional(),
-    avatar: z.string().url().optional().or(z.literal('')),
+    // Accept either a remote URL or a base64 data URI (server converts it to Cloudinary before saving)
+    avatar: z.union([
+        z.string().url(),
+        z.string().regex(/^data:image\/(png|jpe?g|gif|webp|svg\+xml);base64,/i, 'Invalid image data URI'),
+        z.literal(''),
+    ]).optional(),
     interests: z.array(z.string()).optional(),
     bio: z.string().max(500).optional(),
     location: z.string().max(200).optional(),
