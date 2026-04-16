@@ -1,14 +1,45 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../config/database';
+import redis from '../config/redis';
 
 if (!process.env.JWT_SECRET) {
     throw new Error('FATAL: JWT_SECRET environment variable is not set. Server cannot start without it.');
 }
 const JWT_SECRET: string = process.env.JWT_SECRET;
 
+const USER_CACHE_TTL = 300; // 5 minutes
+
 export interface AuthRequest extends Request {
     user?: any;
+}
+
+async function fetchUser(userId: string) {
+    // 1. Try Redis cache
+    try {
+        const cached = await redis.get(`user:${userId}`);
+        if (cached) return JSON.parse(cached);
+    } catch {
+        // Redis unavailable — fall through to DB
+    }
+
+    // 2. Hit the DB
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return null;
+
+    // 3. Warm the cache (non-blocking)
+    redis.set(`user:${userId}`, JSON.stringify(user), 'EX', USER_CACHE_TTL).catch(() => {});
+
+    return user;
+}
+
+/** Call this whenever a user's profile is updated so the cache doesn't go stale. */
+export async function invalidateUserCache(userId: string) {
+    try {
+        await redis.del(`user:${userId}`);
+    } catch {
+        // Redis unavailable — no-op
+    }
 }
 
 export const authenticate = async (req: AuthRequest, res: Response, next: NextFunction) => {
@@ -23,12 +54,9 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
         }
 
         const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
 
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string, email: string };
-
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
-        });
+        const user = await fetchUser(decoded.userId);
 
         if (!user) {
             return res.status(401).json({
@@ -48,29 +76,20 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
 };
 
 /**
- * Optional authentication - doesn't fail if no token, just sets req.user if valid
+ * Optional authentication — doesn't fail if no token, just sets req.user if valid.
  */
 export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFunction) => {
     try {
         const authHeader = req.headers.authorization;
-
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-            return next();
-        }
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return next();
 
         const token = authHeader.split(' ')[1];
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string, email: string };
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
 
-        const user = await prisma.user.findUnique({
-            where: { id: decoded.userId },
-        });
-
-        if (user) {
-            req.user = user;
-        }
+        const user = await fetchUser(decoded.userId);
+        if (user) req.user = user;
         next();
-    } catch (error) {
-        // If token is invalid, just continue without user context
+    } catch {
         next();
     }
 };

@@ -8,10 +8,9 @@ import {
 } from './v1/config/database';
 import { initializeChatSocket } from './v1/websocket/chat.socket';
 import { startReminderScheduler } from './v1/jobs/reminder.scheduler';
-// Redis & email queue disabled — no Redis instance available
-// import { connectRedis, disconnectRedis } from './v1/config/redis';
-// import { emailWorker } from './v1/jobs/email.worker';
-// import { emailQueue } from './v1/jobs/email.queue';
+import { connectRedis, disconnectRedis } from './v1/config/redis';
+import { emailWorker } from './v1/jobs/email.worker';
+import { emailQueue } from './v1/jobs/email.queue';
 
 const DEFAULT_PORT = 8000;
 
@@ -83,9 +82,13 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
 
     const finalize = async () => {
       try {
-        await disconnectDatabase();
-      } catch (dbError) {
-        console.error('Error while disconnecting Prisma', dbError);
+        await Promise.all([
+          disconnectDatabase(),
+          disconnectRedis(),
+          emailWorker.close(),
+        ]);
+      } catch (shutdownError) {
+        console.error('Error during shutdown', shutdownError);
       }
 
       process.exit(0);
@@ -98,8 +101,11 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
 const bootstrap = async () => {
   try {
     await connectDatabase();
+    await connectRedis(); // non-fatal — warns and continues if Redis is unavailable
     server.listen(port);
     startReminderScheduler();
+    console.log(`📧 Email worker active (concurrency: ${emailWorker.concurrency})`);
+    console.log(`📬 Email queue ready: ${emailQueue.name}`);
   } catch (error) {
     console.error('Failed to bootstrap services', error);
     process.exit(1);

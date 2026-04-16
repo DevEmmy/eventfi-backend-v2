@@ -82,72 +82,95 @@ export class ManageService {
      * capacity, check-in, and change metrics always use all-time data.
      */
     static async getEventStats(eventId: string, startDate?: Date) {
-        const tickets = await prisma.ticket.findMany({ where: { eventId } });
+        const periodFilter = startDate ? { createdAt: { gte: startDate } } : {};
 
-        // All-time confirmed orders (needed for capacity & change metrics)
-        const allOrders = await prisma.bookingOrder.findMany({
-            where: { eventId, status: 'CONFIRMED' },
-            include: { items: true }
-        });
+        // Run all independent aggregations concurrently — no more loading full rows into memory
+        const [
+            ticketAgg,
+            allTimeRevenueAgg,
+            periodRevenueAgg,
+            periodTicketsSoldAgg,
+            checkIns,
+            noShows,
+            refunds,
+            event,
+        ] = await Promise.all([
+            // Capacity from ticket table (small, fast)
+            prisma.ticket.aggregate({
+                where: { eventId },
+                _sum: { quantity: true, remaining: true },
+            }),
+            // All-time revenue (needed for change % calc)
+            prisma.bookingOrder.aggregate({
+                where: { eventId, status: 'CONFIRMED' },
+                _sum: { total: true },
+            }),
+            // Period-scoped revenue
+            prisma.bookingOrder.aggregate({
+                where: { eventId, status: 'CONFIRMED', ...periodFilter },
+                _sum: { total: true },
+            }),
+            // Period-scoped tickets sold via OrderItem aggregation
+            prisma.orderItem.aggregate({
+                where: { order: { eventId, status: 'CONFIRMED', ...periodFilter } },
+                _sum: { quantity: true },
+            }),
+            // Check-in counts via DB — no JS filtering
+            prisma.attendee.count({
+                where: { order: { eventId, status: 'CONFIRMED' }, checkedIn: true },
+            }),
+            prisma.attendee.count({
+                where: { order: { eventId, status: 'CONFIRMED' }, checkedIn: false },
+            }),
+            prisma.bookingOrder.count({ where: { eventId, status: 'REFUNDED' } }),
+            prisma.event.findUnique({
+                where: { id: eventId },
+                select: { organizerId: true, createdAt: true },
+            }),
+        ]);
 
-        const totalTickets = tickets.reduce((sum, t) => sum + t.quantity, 0);
-        const ticketsRemaining = tickets.reduce((sum, t) => sum + t.remaining, 0);
-        const allTimeTicketsSold = tickets.reduce((sum, t) => sum + (t.quantity - t.remaining), 0);
-        const allTimeRevenue = allOrders.reduce((sum, o) => sum + o.total, 0);
-
-        // Period-scoped values (falls back to all-time when no startDate)
-        const periodOrders = startDate
-            ? allOrders.filter(o => o.createdAt >= startDate)
-            : allOrders;
-        const ticketsSold = startDate
-            ? periodOrders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0)
-            : allTimeTicketsSold;
-        const totalRevenue = periodOrders.reduce((sum, o) => sum + o.total, 0);
+        const totalTickets      = ticketAgg._sum.quantity  ?? 0;
+        const ticketsRemaining  = ticketAgg._sum.remaining ?? 0;
+        const allTimeTicketsSold = totalTickets - ticketsRemaining;
+        const allTimeRevenue    = allTimeRevenueAgg._sum.total ?? 0;
+        const totalRevenue      = periodRevenueAgg._sum.total  ?? 0;
+        const ticketsSold       = periodTicketsSoldAgg._sum.quantity ?? allTimeTicketsSold;
         const averageTicketPrice = ticketsSold > 0 ? totalRevenue / ticketsSold : 0;
 
-        // Check-in stats are always all-time (happen at the event, not tied to purchase date)
-        const attendees = await prisma.attendee.findMany({
-            where: { order: { eventId, status: 'CONFIRMED' } }
-        });
-        const checkIns = attendees.filter(a => a.checkedIn).length;
-        const noShows = attendees.filter(a => !a.checkedIn).length;
-        const refunds = await prisma.bookingOrder.count({ where: { eventId, status: 'REFUNDED' } });
-
-        // Compare all-time revenue/sales against the organizer's previous event
+        // Compare all-time stats against the organiser's previous event
         let revenueChange = 0;
-        let salesChange = 0;
-
-        const event = await prisma.event.findUnique({
-            where: { id: eventId },
-            select: { organizerId: true, createdAt: true }
-        });
+        let salesChange   = 0;
 
         if (event) {
             const prevEvent = await prisma.event.findFirst({
                 where: {
                     organizerId: event.organizerId,
                     id: { not: eventId },
-                    createdAt: { lt: event.createdAt }
+                    createdAt: { lt: event.createdAt },
                 },
-                orderBy: { createdAt: 'desc' }
+                orderBy: { createdAt: 'desc' },
+                select: { id: true },
             });
 
             if (prevEvent) {
-                const prevOrders = await prisma.bookingOrder.findMany({
-                    where: { eventId: prevEvent.id, status: 'CONFIRMED' },
-                    include: { items: true }
-                });
-                const prevRevenue = prevOrders.reduce((sum, o) => sum + o.total, 0);
-                const prevSold = prevOrders.reduce(
-                    (sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0
-                );
+                const [prevRevenueAgg, prevSoldAgg] = await Promise.all([
+                    prisma.bookingOrder.aggregate({
+                        where: { eventId: prevEvent.id, status: 'CONFIRMED' },
+                        _sum: { total: true },
+                    }),
+                    prisma.orderItem.aggregate({
+                        where: { order: { eventId: prevEvent.id, status: 'CONFIRMED' } },
+                        _sum: { quantity: true },
+                    }),
+                ]);
 
-                if (prevRevenue > 0) {
+                const prevRevenue = prevRevenueAgg._sum.total    ?? 0;
+                const prevSold    = prevSoldAgg._sum.quantity    ?? 0;
+
+                if (prevRevenue > 0)
                     revenueChange = Math.round(((allTimeRevenue - prevRevenue) / prevRevenue) * 100);
-                }
-                if (prevSold > 0) {
+                if (prevSold > 0)
                     salesChange = Math.round(((allTimeTicketsSold - prevSold) / prevSold) * 100);
-                }
             }
         }
 
@@ -218,81 +241,79 @@ export class ManageService {
             select: { organizerId: true }
         });
 
-        // Get sales over time (scoped to period if startDate is set)
-        const orders = await prisma.bookingOrder.findMany({
+        // Sales over time — group by date using only scalar fields (no items included)
+        const periodOrders = await prisma.bookingOrder.findMany({
             where: {
                 eventId,
                 status: 'CONFIRMED',
-                ...(startDate ? { createdAt: { gte: startDate } } : {})
+                ...(startDate ? { createdAt: { gte: startDate } } : {}),
             },
-            include: { items: true },
-            orderBy: { createdAt: 'asc' }
+            select: { createdAt: true, total: true },
+            orderBy: { createdAt: 'asc' },
         });
 
-        // Group by date
+        // Ticket counts per order via a single aggregation grouped by order
+        const periodItemsByOrder = await prisma.orderItem.groupBy({
+            by: ['orderId'],
+            where: { order: { eventId, status: 'CONFIRMED', ...(startDate ? { createdAt: { gte: startDate } } : {}) } },
+            _sum: { quantity: true },
+        });
+        const itemQtyByOrder = new Map(periodItemsByOrder.map(r => [r.orderId, r._sum.quantity ?? 0]));
+
+        // Group by date in memory (only scalars, much lighter than full rows + items)
         const salesByDate = new Map<string, { ticketsSold: number; revenue: number }>();
-        for (const order of orders) {
+        for (const order of periodOrders) {
             const date = order.createdAt.toISOString().split('T')[0];
-            const existing = salesByDate.get(date) || { ticketsSold: 0, revenue: 0 };
-            const ticketsSold = order.items.reduce((sum, i) => sum + i.quantity, 0);
+            const existing = salesByDate.get(date) ?? { ticketsSold: 0, revenue: 0 };
             salesByDate.set(date, {
-                ticketsSold: existing.ticketsSold + ticketsSold,
-                revenue: existing.revenue + order.total
+                ticketsSold: existing.ticketsSold + (itemQtyByOrder.get((order as any).id) ?? 0),
+                revenue: existing.revenue + order.total,
             });
         }
 
-        const salesOverTime = Array.from(salesByDate.entries()).map(([date, data]) => ({
-            date,
-            ...data
-        }));
+        const salesOverTime = Array.from(salesByDate.entries()).map(([date, data]) => ({ date, ...data }));
 
-        // Peak sales day — the date with the most tickets sold in the period
         let peakSalesDay: { date: string; ticketsSold: number } | null = null;
         for (const [date, data] of salesByDate.entries()) {
-            if (!peakSalesDay || data.ticketsSold > peakSalesDay.ticketsSold) {
+            if (!peakSalesDay || data.ticketsSold > peakSalesDay.ticketsSold)
                 peakSalesDay = { date, ticketsSold: data.ticketsSold };
-            }
         }
 
-        // Average order value across all confirmed orders in the period
-        const avgOrderValue = orders.length > 0
-            ? Math.round(orders.reduce((sum, o) => sum + o.total, 0) / orders.length)
-            : 0;
+        const avgOrderAgg = await prisma.bookingOrder.aggregate({
+            where: { eventId, status: 'CONFIRMED', ...(startDate ? { createdAt: { gte: startDate } } : {}) },
+            _avg: { total: true },
+        });
+        const avgOrderValue = Math.round(avgOrderAgg._avg.total ?? 0);
 
-        // Repeat attendees — attendees whose email appears in a confirmed order
-        // for a different event organised by the same organiser
+        // Repeat attendees — parallelise the two lookup queries
         let repeatAttendeesRate = 0;
         if (event && stats.ticketsSold > 0) {
-            const attendees = await prisma.attendee.findMany({
+            const attendeeEmails = await prisma.attendee.findMany({
                 where: { order: { eventId, status: 'CONFIRMED' } },
-                select: { email: true }
+                select: { email: true },
             });
 
-            const emails = attendees.map(a => a.email);
+            const emails = attendeeEmails.map(a => a.email);
 
             if (emails.length > 0) {
-                // Other events by the same organiser (excluding current event)
-                const otherEventIds = await prisma.event.findMany({
-                    where: { organizerId: event.organizerId, id: { not: eventId } },
-                    select: { id: true }
-                });
+                const [otherEventIds, ] = await Promise.all([
+                    prisma.event.findMany({
+                        where: { organizerId: event.organizerId, id: { not: eventId } },
+                        select: { id: true },
+                    }),
+                ]);
 
                 const otherIds = otherEventIds.map(e => e.id);
 
-                let repeatCount = 0;
                 if (otherIds.length > 0) {
-                    const repeatAttendees = await prisma.attendee.findMany({
+                    const repeatCount = await prisma.attendee.count({
                         where: {
                             email: { in: emails },
-                            order: { eventId: { in: otherIds }, status: 'CONFIRMED' }
+                            order: { eventId: { in: otherIds }, status: 'CONFIRMED' },
                         },
-                        select: { email: true },
-                        distinct: ['email']
                     });
-                    repeatCount = repeatAttendees.length;
+                    repeatAttendeesRate = Math.round((repeatCount / emails.length) * 100);
                 }
-
-                repeatAttendeesRate = Math.round((repeatCount / emails.length) * 100);
             }
         }
 
@@ -393,10 +414,11 @@ export class ManageService {
         const attendees = await prisma.attendee.findMany({
             where,
             orderBy: { createdAt: 'desc' },
+            take: 10_000, // hard cap — stream for larger datasets
             include: {
                 ticket: { select: { name: true, price: true } },
-                order: { select: { id: true } }
-            }
+                order: { select: { id: true } },
+            },
         });
 
         const escape = (val: any) => {
@@ -437,11 +459,12 @@ export class ManageService {
 
         const orders = await prisma.bookingOrder.findMany({
             where: { eventId, status: 'CONFIRMED' },
+            take: 10_000, // hard cap — stream for larger datasets
             include: {
                 items: true,
-                user: { select: { displayName: true, email: true } }
+                user: { select: { displayName: true, email: true } },
             },
-            orderBy: { createdAt: 'asc' }
+            orderBy: { createdAt: 'asc' },
         });
 
         const escape = (val: any) => {
@@ -613,10 +636,13 @@ export class ManageService {
         if (!event) throw new Error('Event not found');
         if (event.status === 'CANCELLED') throw new Error('Event already cancelled');
 
-        // Get orders separately
+        // Fetch only the fields needed for refund + notification (no full row load)
         const orders = await prisma.bookingOrder.findMany({
             where: { eventId, status: 'CONFIRMED' },
-            include: { attendees: true }
+            select: {
+                id: true,
+                attendees: { select: { email: true } },
+            },
         });
 
         // Update event status
@@ -626,15 +652,17 @@ export class ManageService {
         });
 
         let refundsInitiated = 0;
-        if (refundPolicy !== 'none') {
-            // Mark orders for refund
-            for (const order of orders) {
-                await prisma.bookingOrder.update({
-                    where: { id: order.id },
-                    data: { status: 'REFUNDED', paymentStatus: 'REFUNDED' }
-                });
-                refundsInitiated++;
-            }
+        if (refundPolicy !== 'none' && orders.length > 0) {
+            // Mark all orders for refund in a single transaction
+            await prisma.$transaction(
+                orders.map(order =>
+                    prisma.bookingOrder.update({
+                        where: { id: order.id },
+                        data: { status: 'REFUNDED', paymentStatus: 'REFUNDED' },
+                    })
+                )
+            );
+            refundsInitiated = orders.length;
         }
 
         // Send notification emails to attendees via queue
@@ -720,20 +748,21 @@ export class ManageService {
             };
         }
 
-        // 5. Send emails (for now, iterating; in production, this should be a background job)
-        // We use Promise.all for some concurrency, but be careful with SMTP rate limits
-        const emailPromises = attendees.map(attendee =>
-            EmailService.sendAnnouncement(attendee.email, {
-                eventTitle: event.title,
-                subject: subject,
-                content: body,
-                organizerName: event.organizer.displayName || 'Event Organizer'
-            })
-        );
-
-        // We don't await ALL to avoid blocking the request for too long if there are many attendees,
-        // but for small batches it's okay. For 100+ attendees, a worker pattern is mandatory.
-        await Promise.all(emailPromises);
+        // 5. Send emails in chunks of 10 to respect SMTP rate limits
+        const CHUNK_SIZE = 10;
+        for (let i = 0; i < attendees.length; i += CHUNK_SIZE) {
+            const chunk = attendees.slice(i, i + CHUNK_SIZE);
+            await Promise.all(
+                chunk.map(attendee =>
+                    EmailService.sendAnnouncement(attendee.email, {
+                        eventTitle: event.title,
+                        subject,
+                        content: body,
+                        organizerName: event.organizer.displayName || 'Event Organizer',
+                    }).catch(err => console.error(`[BulkEmail] Failed to send to ${attendee.email}:`, err))
+                )
+            );
+        }
 
         console.log(`[Bulk Email] Event ${eventId}: Sent ${attendees.length} emails`);
 

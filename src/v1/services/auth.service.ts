@@ -5,6 +5,7 @@ import { prisma } from '../config/database';
 import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
 import { CloudinaryService } from '../utils/cloudinary.service';
+import { invalidateUserCache } from '../middlewares/auth.middleware';
 
 const SALT_ROUNDS = parseInt(process.env.SALT_ROUNDS || '10');
 if (!process.env.JWT_SECRET) {
@@ -222,6 +223,9 @@ export class AuthService {
                 interests: true,
             },
         });
+
+        // Bust the auth-middleware cache so the next request sees fresh data
+        invalidateUserCache(userId).catch(() => {});
 
         return updatedUser;
     }

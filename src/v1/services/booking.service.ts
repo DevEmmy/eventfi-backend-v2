@@ -184,13 +184,15 @@ export class BookingService {
             }
         });
 
-        // Reserve tickets (decrease remaining)
-        for (const item of items) {
-            await prisma.ticket.update({
-                where: { id: item.ticketTypeId },
-                data: { remaining: { decrement: item.quantity } }
-            });
-        }
+        // Reserve tickets atomically in a single transaction (parallel updates)
+        await prisma.$transaction(
+            items.map(item =>
+                prisma.ticket.update({
+                    where: { id: item.ticketTypeId },
+                    data: { remaining: { decrement: item.quantity } },
+                })
+            )
+        );
 
         return this.formatOrder(order);
     }
@@ -282,13 +284,15 @@ export class BookingService {
         if (userId && order.userId !== userId) throw new Error('Unauthorized');
         if (order.status !== 'PENDING') throw new Error('Cannot cancel this order');
 
-        // Release tickets
-        for (const item of order.items) {
-            await prisma.ticket.update({
-                where: { id: item.ticketId },
-                data: { remaining: { increment: item.quantity } }
-            });
-        }
+        // Release tickets atomically in a single transaction (parallel updates)
+        await prisma.$transaction(
+            order.items.map(item =>
+                prisma.ticket.update({
+                    where: { id: item.ticketId },
+                    data: { remaining: { increment: item.quantity } },
+                })
+            )
+        );
 
         await prisma.bookingOrder.update({
             where: { id: orderId },

@@ -324,6 +324,7 @@ export class VendorService {
         return prisma.vendorBooking.findMany({
             where,
             orderBy: { createdAt: 'desc' },
+            take: 100,
         });
     }
 
@@ -334,6 +335,7 @@ export class VendorService {
         return prisma.vendorBooking.findMany({
             where: { userId },
             orderBy: { createdAt: 'desc' },
+            take: 100,
             include: {
                 vendor: { select: { id: true, name: true, category: true, logo: true } },
             },

@@ -150,11 +150,21 @@ export class ChatService {
         });
         if (!member) throw new Error(CHAT_ERROR_CODES.NOT_AUTHORIZED);
 
+        // Resolve the cursor timestamp before the main query (avoids a nested await inside findMany)
+        let beforeTimestamp: Date | undefined;
+        if (before) {
+            const cursor = await prisma.chatMessage.findUnique({
+                where: { id: before },
+                select: { createdAt: true },
+            });
+            beforeTimestamp = cursor?.createdAt;
+        }
+
         const messages = await prisma.chatMessage.findMany({
             where: {
                 chatId: chat.id,
                 isDeleted: false,
-                ...(before && { createdAt: { lt: (await prisma.chatMessage.findUnique({ where: { id: before } }))?.createdAt } })
+                ...(beforeTimestamp && { createdAt: { lt: beforeTimestamp } }),
             },
             take: Math.min(limit, 100),
             orderBy: { createdAt: 'desc' },
@@ -563,30 +573,27 @@ export class ChatService {
             orderBy: { lastSeenAt: 'desc' }
         });
 
-        // Get last message and unread count for each chat
+        // Get last message and unread count for each chat — both queries run in parallel
         const chatPreviews = await Promise.all(
             memberships.map(async (membership) => {
                 const chat = membership.chat;
                 const event = chat.event;
 
-                // Get last message
-                const lastMessage = await prisma.chatMessage.findFirst({
-                    where: { chatId: chat.id, isDeleted: false },
-                    orderBy: { createdAt: 'desc' },
-                    include: {
-                        sender: { select: { displayName: true } }
-                    }
-                });
-
-                // Get unread count (messages after last seen)
-                const unreadCount = await prisma.chatMessage.count({
-                    where: {
-                        chatId: chat.id,
-                        isDeleted: false,
-                        createdAt: { gt: membership.lastSeenAt },
-                        senderId: { not: userId } // Don't count own messages
-                    }
-                });
+                const [lastMessage, unreadCount] = await Promise.all([
+                    prisma.chatMessage.findFirst({
+                        where: { chatId: chat.id, isDeleted: false },
+                        orderBy: { createdAt: 'desc' },
+                        include: { sender: { select: { displayName: true } } },
+                    }),
+                    prisma.chatMessage.count({
+                        where: {
+                            chatId: chat.id,
+                            isDeleted: false,
+                            createdAt: { gt: membership.lastSeenAt },
+                            senderId: { not: userId },
+                        },
+                    }),
+                ]);
 
                 // Format event date
                 const eventDate = new Date(event.startDate);

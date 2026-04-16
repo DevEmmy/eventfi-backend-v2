@@ -31,8 +31,8 @@ export const connectRedis = async () => {
   try {
     await redis.connect();
   } catch (error) {
-    console.error('❌ Failed to connect to Redis', error);
-    process.exit(1);
+    // Redis is optional — caching and email queue degrade gracefully without it
+    console.warn('⚠️  Redis unavailable — caching and email queue disabled:', (error as Error).message);
   }
 };
 

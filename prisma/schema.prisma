@@ -199,6 +199,12 @@ model Event {
   favoritesCount Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([startDate])
+  @@index([organizerId])
+  @@index([organizerId, status])
+  @@index([status, startDate])
+  @@index([category, status])
 }
 
 model Ticket {
@@ -222,6 +228,8 @@ model Ticket {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([eventId])
 }
 
 model Review {
@@ -367,6 +375,9 @@ model BookingOrder {
   expiresAt   DateTime? // Order expires if not paid
   paidAt      DateTime?
   confirmedAt DateTime?
+
+  @@index([userId])
+  @@index([eventId, status])
 }
 
 model OrderItem {
@@ -398,6 +409,9 @@ model Attendee {
   checkInMethod String? // 'manual' | 'qr_scan'
   status        String       @default("valid") // valid, used, cancelled, expired
   createdAt     DateTime     @default(now())
+
+  @@index([email])
+  @@index([orderId])
 }
 
 model EventTeamMember {
@@ -469,6 +483,9 @@ model ChatMessage {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([chatId, isDeleted, createdAt])
+  @@index([chatId, senderId])
 }
 
 model ChatMember {
