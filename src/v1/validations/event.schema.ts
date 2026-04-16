@@ -25,6 +25,7 @@ const scheduleSchema = z.object({
 });
 
 const ticketSchema = z.object({
+    id: z.string().optional(),
     name: z.string().min(1, 'Ticket name is required'),
     description: z.string().optional(),
     type: z.enum(['FREE', 'PAID', 'DONATION']),
