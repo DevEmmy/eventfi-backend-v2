@@ -26,7 +26,7 @@ function buildConnection() {
 const connection = buildConnection();
 
 interface EmailJobData {
-    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification';
+    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification' | 'payout-requested' | 'payout-approved' | 'payout-rejected' | 'payout-completed';
     to: string;
     [key: string]: any;
 }
@@ -98,6 +98,48 @@ export const emailWorker = new Worker<EmailJobData>(
 
                 case 'email-verification': {
                     const template = EmailTemplates.emailVerification(data.verifyUrl);
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'payout-requested': {
+                    const template = EmailTemplates.payoutRequested({
+                        name: data.name,
+                        eventTitle: data.eventTitle,
+                        netAmount: data.netAmount,
+                        currency: data.currency,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'payout-approved': {
+                    const template = EmailTemplates.payoutApproved({
+                        name: data.name,
+                        netAmount: data.netAmount,
+                        currency: data.currency,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'payout-rejected': {
+                    const template = EmailTemplates.payoutRejected({
+                        name: data.name,
+                        reason: data.reason,
+                        currency: data.currency,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'payout-completed': {
+                    const template = EmailTemplates.payoutCompleted({
+                        name: data.name,
+                        netAmount: data.netAmount,
+                        currency: data.currency,
+                        paymentReference: data.paymentReference,
+                    });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
                 }

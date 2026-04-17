@@ -53,6 +53,8 @@ model User {
   notifications    Notification[]
   vendor           Vendor?
   activityEntries  ActivityEntry[]
+  payoutAccount    PayoutAccount?
+  payoutRequests   PayoutRequest[]
 }
 
 // ============ NOTIFICATIONS ============
@@ -192,6 +194,7 @@ model Event {
   teamMembers   EventTeamMember[]
   chat          EventChat?
   activities    EventActivity[]
+  payouts       PayoutRequest[]
 
   // Metadata
   isFeatured     Boolean  @default(false)
@@ -662,4 +665,71 @@ model ActivityEntry {
 
   @@unique([activityId, userId])
   @@index([activityId])
+}
+
+// ==================== PAYOUTS ====================
+
+model PayoutAccount {
+  id            String   @id @default(uuid()) @db.Uuid
+  organizerId   String   @unique @db.Uuid
+  organizer     User     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+
+  bankName      String
+  bankCode      String   // CBN bank code e.g. "058" for GTBank
+  accountNumber String
+  accountName   String   // confirmed name returned by bank verification
+
+  isVerified    Boolean  @default(false)
+  verifiedAt    DateTime?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payouts       PayoutRequest[]
+}
+
+enum PayoutStatus {
+  PENDING     // submitted, awaiting admin review
+  APPROVED    // admin approved, ready to disburse
+  PROCESSING  // payment initiated to organizer's bank
+  COMPLETED   // funds successfully transferred
+  REJECTED    // admin rejected with reason
+  CANCELLED   // organizer cancelled before approval
+}
+
+model PayoutRequest {
+  id          String        @id @default(uuid()) @db.Uuid
+  organizerId String        @db.Uuid
+  organizer   User          @relation(fields: [organizerId], references: [id])
+  accountId   String        @db.Uuid
+  account     PayoutAccount @relation(fields: [accountId], references: [id])
+  eventId     String?       @db.Uuid
+  event       Event?        @relation(fields: [eventId], references: [id])
+
+  // Financial snapshot at request time
+  grossRevenue    Float  // SUM(subtotal) from CONFIRMED + COMPLETED-payment orders
+  platformFee     Float  // SUM(serviceFee) — retained by EventFi
+  refundsTotal    Float  // deductions for refunded orders
+  previousPayouts Float  // prior non-failed payouts for same scope
+  netAmount       Float  // what the organizer receives
+  currency        String @default("NGN")
+
+  status          PayoutStatus @default(PENDING)
+
+  // Admin review fields
+  reviewerId       String?  @db.Uuid
+  reviewNote       String?
+  rejectionReason  String?
+  paymentReference String?  // bank transfer reference once processed
+
+  // Anti-fraud metadata
+  requestIp String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
+
+  @@index([organizerId, status])
+  @@index([eventId])
+  @@index([status, createdAt])
 }

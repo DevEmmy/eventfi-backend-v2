@@ -220,5 +220,72 @@ export const EmailTemplates = {
             </div>
         `,
         text: `${data.subject}\n\n${data.content}\n\nSent by ${data.organizerName} for ${data.eventTitle}`
-    })
+    }),
+
+    // ─── Payout emails ────────────────────────────────────────────────────────
+
+    payoutRequested: (data: { name: string; eventTitle: string; netAmount: number; currency: string }) => ({
+        subject: 'Payout request received — EventFi',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">Payout request received</h2>
+                <p>Hi ${data.name},</p>
+                <p>We've received your payout request for <strong>${data.eventTitle}</strong>.</p>
+                <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
+                    <tr><td style="padding:8px; color:#666;">Amount requested</td><td style="padding:8px; font-weight:bold;">${data.currency} ${data.netAmount.toLocaleString()}</td></tr>
+                    <tr style="background:#f9f9f9"><td style="padding:8px; color:#666;">Status</td><td style="padding:8px;">Under review</td></tr>
+                </table>
+                <p>Our team will review your request within 1–2 business days. You'll receive another email once it's approved or if we need more information.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Hi ${data.name}, we received your payout request for ${data.eventTitle}. Amount: ${data.currency} ${data.netAmount.toLocaleString()}. Status: Under review. We'll update you within 1–2 business days.`
+    }),
+
+    payoutApproved: (data: { name: string; netAmount: number; currency: string }) => ({
+        subject: 'Your payout has been approved — EventFi',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #22c55e;">Payout approved!</h2>
+                <p>Hi ${data.name},</p>
+                <p>Great news — your payout of <strong>${data.currency} ${data.netAmount.toLocaleString()}</strong> has been approved and is now being processed to your registered bank account.</p>
+                <p>Bank transfers typically arrive within 1–3 business days depending on your bank.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Hi ${data.name}, your payout of ${data.currency} ${data.netAmount.toLocaleString()} has been approved and is being processed. Expect funds within 1–3 business days.`
+    }),
+
+    payoutRejected: (data: { name: string; reason: string; currency: string }) => ({
+        subject: 'Payout request update — EventFi',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #ef4444;">Payout request not approved</h2>
+                <p>Hi ${data.name},</p>
+                <p>Unfortunately we were unable to process your payout request at this time.</p>
+                <p><strong>Reason:</strong> ${data.reason}</p>
+                <p>If you believe this is an error or need assistance, please contact our support team.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Hi ${data.name}, your payout request was not approved. Reason: ${data.reason}. Contact support if you need assistance.`
+    }),
+
+    payoutCompleted: (data: { name: string; netAmount: number; currency: string; paymentReference: string }) => ({
+        subject: 'Your payout is on its way — EventFi',
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #22c55e;">Payment sent!</h2>
+                <p>Hi ${data.name},</p>
+                <p><strong>${data.currency} ${data.netAmount.toLocaleString()}</strong> has been transferred to your bank account.</p>
+                <table style="width:100%; border-collapse:collapse; margin: 16px 0;">
+                    <tr><td style="padding:8px; color:#666;">Reference</td><td style="padding:8px; font-family:monospace;">${data.paymentReference}</td></tr>
+                </table>
+                <p>Please keep this reference number for your records. If the funds haven't arrived after 3 business days, contact your bank with this reference.</p>
+                <p>Thank you for hosting on EventFi!</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `Hi ${data.name}, ${data.currency} ${data.netAmount.toLocaleString()} has been transferred to your bank. Reference: ${data.paymentReference}. Keep this for your records.`
+    }),
 };

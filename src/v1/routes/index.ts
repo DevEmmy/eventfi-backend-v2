@@ -10,6 +10,7 @@ import activityRoutes from './activity.routes';
 import notificationRoutes from './notification.routes';
 import vendorRoutes from './vendor.routes';
 import adminRoutes from './admin.routes';
+import payoutRoutes from './payout.routes';
 import { BookingController } from '../controllers/booking.controller';
 import { ManageController } from '../controllers/manage.controller';
 import { ChatController } from '../controllers/chat.controller';
@@ -38,6 +39,9 @@ router.use('/notifications', notificationRoutes);
 
 // Vendor/Marketplace routes
 router.use('/vendors', vendorRoutes);
+
+// Payout routes
+router.use('/payouts', payoutRoutes);
 
 // Team invitation acceptance
 router.post('/team/accept', authenticate, ManageController.acceptTeamInvitation);

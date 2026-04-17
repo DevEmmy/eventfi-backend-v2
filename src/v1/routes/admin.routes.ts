@@ -10,6 +10,7 @@ import {
     AdminReportsController,
     AdminAIController,
 } from '../controllers/admin.controller';
+import { AdminPayoutController } from '../controllers/payout.controller';
 
 const router = Router();
 
@@ -57,5 +58,15 @@ router.get('/reports/export', requireAdmin, AdminReportsController.exportCSV);
 // ─── AI / Insights ───────────────────────────────────────────────────────────
 router.get('/ai/insights', requireAdmin, AdminAIController.getInsights);
 router.get('/ai/forecast', requireAdmin, AdminAIController.getForecast);
+
+// ─── Payouts ─────────────────────────────────────────────────────────────────
+// GET    /admin/payouts?status=PENDING       → list all requests (filterable)
+// PATCH  /admin/payouts/:payoutId/approve    → approve + optional note
+// PATCH  /admin/payouts/:payoutId/reject     → reject with mandatory reason
+// PATCH  /admin/payouts/:payoutId/complete   → mark completed with bank reference
+router.get('/payouts', requireAdmin, AdminPayoutController.list);
+router.patch('/payouts/:payoutId/approve', requireAdmin, AdminPayoutController.approve);
+router.patch('/payouts/:payoutId/reject', requireAdmin, AdminPayoutController.reject);
+router.patch('/payouts/:payoutId/complete', requireAdmin, AdminPayoutController.complete);
 
 export default router;
