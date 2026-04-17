@@ -226,7 +226,8 @@ export class ManageService {
         });
 
         return tickets.map(t => {
-            const sold = t.quantity - t.remaining;
+            const sold = t.orderItems.reduce((sum, i) => sum + i.quantity, 0);
+            const revenue = t.orderItems.reduce((sum, i) => sum + i.totalPrice, 0);
             return {
                 ticketTypeId: t.id,
                 name: t.name,
@@ -234,7 +235,7 @@ export class ManageService {
                 total: t.quantity,
                 sold,
                 remaining: t.remaining,
-                revenue: sold * t.price
+                revenue
             };
         });
     }
