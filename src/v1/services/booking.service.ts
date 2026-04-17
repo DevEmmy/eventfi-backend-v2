@@ -516,7 +516,8 @@ export class BookingService {
         if (!paymentId) throw new Error('Missing payment ID in webhook payload');
 
         const order = await prisma.bookingOrder.findFirst({
-            where: { paymentReference: paymentId }
+            where: { paymentReference: paymentId },
+            include: { items: true }
         });
 
         if (!order) {
@@ -525,6 +526,7 @@ export class BookingService {
         }
 
         if (event === 'PaymentConfirmed') {
+            // Mark payment complete then run full confirmation flow
             await prisma.bookingOrder.update({
                 where: { id: order.id },
                 data: {
@@ -532,10 +534,30 @@ export class BookingService {
                     paidAt: new Date()
                 }
             });
+
+            // Confirm the order (sends notifications, emails, increments attendee count, etc.)
+            if (order.status === 'PENDING') {
+                await this.confirmOrder(order.id, undefined);
+            }
         } else if (event === 'PaymentFailed' || event === 'PaymentExpired') {
+            if (order.status !== 'PENDING') return { received: true };
+
+            // Release reserved tickets back to inventory
+            await prisma.$transaction(
+                order.items.map(item =>
+                    prisma.ticket.update({
+                        where: { id: item.ticketId },
+                        data: { remaining: { increment: item.quantity } },
+                    })
+                )
+            );
+
             await prisma.bookingOrder.update({
                 where: { id: order.id },
-                data: { paymentStatus: 'FAILED' }
+                data: {
+                    status: 'CANCELLED',
+                    paymentStatus: 'FAILED'
+                }
             });
         }
 
