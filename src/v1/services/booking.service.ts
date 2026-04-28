@@ -306,7 +306,7 @@ export class BookingService {
     }
 
     /**
-     * Initialize payment via ZendFi (for paid tickets)
+     * Initialize payment via Paystack (for paid tickets)
      */
     static async initializePayment(orderId: string, userId: string | undefined, paymentMethod: string, callbackUrl: string) {
         const order = await prisma.bookingOrder.findUnique({
@@ -337,7 +337,7 @@ export class BookingService {
             phone: primaryAttendee?.phone ?? undefined,
         };
 
-        // Create ZendFi payment
+        // Create Paystack payment
         const payment = await PaymentService.initializeTransaction(
             order.total,
             order.currency,
@@ -346,7 +346,7 @@ export class BookingService {
             { orderId, eventTitle }
         );
 
-        // Store the ZendFi payment ID as our reference
+        // Store the Paystack reference
         await prisma.bookingOrder.update({
             where: { id: orderId },
             data: {
@@ -502,30 +502,29 @@ export class BookingService {
     }
 
     /**
-     * Handle ZendFi payment webhook.
+     * Handle Paystack payment webhook.
      *
      * Relevant events:
-     *   PaymentConfirmed — payment settled; confirm the order
-     *   PaymentFailed    — payment failed; mark as failed
-     *   PaymentExpired   — payment timed out; mark as failed
+     *   charge.success — payment settled; confirm the order
+     *   charge.failed  — payment failed; release tickets
      *
      * Signature is already verified by the controller before this is called.
      */
-    static async handlePaymentWebhook(event: string, payment: any) {
-        const paymentId = payment?.id;
-        if (!paymentId) throw new Error('Missing payment ID in webhook payload');
+    static async handlePaymentWebhook(event: string, data: any) {
+        const reference = data?.reference;
+        if (!reference) throw new Error('Missing reference in webhook payload');
 
         const order = await prisma.bookingOrder.findFirst({
-            where: { paymentReference: paymentId },
+            where: { paymentReference: reference },
             include: { items: true }
         });
 
         if (!order) {
-            // Could be a payment not initiated through this system — ignore silently
+            // Payment not initiated through this system — ignore silently
             return { received: true };
         }
 
-        if (event === 'PaymentConfirmed') {
+        if (event === 'charge.success') {
             // Mark payment complete then run full confirmation flow
             await prisma.bookingOrder.update({
                 where: { id: order.id },
@@ -539,7 +538,7 @@ export class BookingService {
             if (order.status === 'PENDING') {
                 await this.confirmOrder(order.id, undefined);
             }
-        } else if (event === 'PaymentFailed' || event === 'PaymentExpired') {
+        } else if (event === 'charge.failed') {
             if (order.status !== 'PENDING') return { received: true };
 
             // Release reserved tickets back to inventory

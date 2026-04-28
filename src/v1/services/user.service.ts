@@ -162,10 +162,15 @@ export class UserService {
                         select: {
                             id: true,
                             title: true,
+                            slug: true,
                             coverImage: true,
                             startDate: true,
+                            startTime: true,
+                            endTime: true,
+                            locationType: true,
                             venueName: true,
                             city: true,
+                            category: true,
                         }
                     }
                 }

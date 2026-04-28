@@ -1,5 +1,10 @@
-import { ZendFiClient, type Currency, type PaymentToken } from '@zendfi/sdk';
 import crypto from 'crypto';
+
+const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
+
+if (!PAYSTACK_SECRET_KEY) {
+    console.warn('WARNING: PAYSTACK_SECRET_KEY is not set. Payment features will be unavailable.');
+}
 
 export interface CustomerObject {
     email: string;
@@ -7,41 +12,9 @@ export interface CustomerObject {
     phone?: string;
 }
 
-const ZENDFI_API_KEY = process.env.ZENDFI_API_KEY;
-const ZENDFI_WEBHOOK_SECRET = process.env.ZENDFI_WEBHOOK_SECRET;
-
-if (!ZENDFI_API_KEY) {
-    console.warn('WARNING: ZENDFI_API_KEY is not set. Payment features will be unavailable.');
-}
-
-const zendfi = ZENDFI_API_KEY ? new ZendFiClient({ apiKey: ZENDFI_API_KEY }) : null;
-
-/**
- * Convert an amount from a source currency to USD using live rates.
- * Falls back to a hardcoded NGN rate if the fetch fails.
- */
-async function toUSD(amount: number, fromCurrency: string): Promise<number> {
-    if (fromCurrency === 'USD') return amount;
-
-    try {
-        const res = await fetch(`https://open.er-api.com/v6/latest/USD`);
-        const data = await res.json() as { rates: Record<string, number> };
-        const rate = data.rates[fromCurrency];
-        if (!rate) throw new Error(`No rate found for ${fromCurrency}`);
-        const usdAmount = parseFloat((amount / rate).toFixed(2));
-        console.log(`[ZendFi] Converted ${amount} ${fromCurrency} → $${usdAmount} USD (rate: ${rate})`);
-        return usdAmount;
-    } catch (err) {
-        console.error('[ZendFi] Exchange rate fetch failed, using fallback NGN rate:', err);
-        // Fallback: approximate NGN/USD rate — update periodically or wire up a paid FX API
-        const fallbackNGNRate = 1600;
-        return parseFloat((amount / fallbackNGNRate).toFixed(2));
-    }
-}
-
 export interface PaymentInitResult {
     paymentUrl: string;
-    reference: string; // ZendFi payment ID (pay_test_... / pay_live_...)
+    reference: string;
 }
 
 export interface PaymentVerifyResult {
@@ -53,9 +26,8 @@ export interface PaymentVerifyResult {
 
 export class PaymentService {
     /**
-     * Create a ZendFi payment and return the hosted checkout URL.
-     * ZendFi accepts amounts in standard units (not smallest unit).
-     * Supported currencies: USD, EUR, GBP. Supported tokens: USDC, USDT, SOL.
+     * Initialize a Paystack transaction and return the hosted checkout URL.
+     * Amount is in NGN; Paystack expects kobo (NGN × 100).
      */
     static async initializeTransaction(
         amount: number,
@@ -64,86 +36,89 @@ export class PaymentService {
         customer: CustomerObject,
         metadata?: Record<string, any>
     ): Promise<PaymentInitResult> {
-        if (!zendfi) {
-            throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
+        if (!PAYSTACK_SECRET_KEY) {
+            throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
         }
-
-        // Convert NGN (or any unsupported currency) to USD for the `amount` field
-        const usdAmount = await toUSD(amount, currency);
 
         const payload = {
-            amount: usdAmount,
-            currency: 'USD' as Currency,
-            token: 'USDC' as PaymentToken,
-            description,
-            onramp: true,         // enable NGN fiat on-ramp
-            amount_ngn: amount,   // original NGN amount shown to the customer
-            customer,             // pre-fills checkout — skips info collection step
-            metadata,
+            email: customer.email,
+            amount: Math.round(amount * 100), // NGN → kobo
+            currency: 'NGN',
+            metadata: {
+                ...metadata,
+                customer_name: customer.name,
+                customer_phone: customer.phone,
+                description,
+            },
         };
-        console.log('[ZendFi] createPaymentLink payload:', JSON.stringify(payload, null, 2));
 
-        let payment: any;
-        try {
-            payment = await (zendfi as any).createPaymentLink(payload);
-            console.log('[ZendFi] createPaymentLink response:', JSON.stringify(payment, null, 2));
-        } catch (err: any) {
-            console.error('[ZendFi] createPaymentLink threw:', err?.message ?? err);
-            console.error('[ZendFi] error status:', err?.status ?? err?.statusCode ?? 'n/a');
-            console.error('[ZendFi] error body:', JSON.stringify(err?.response?.data ?? err?.body ?? err, null, 2));
-            throw err;
-        }
+        console.log('[Paystack] initialize payload:', JSON.stringify(payload, null, 2));
 
-        if (!payment?.payment_url && !payment?.url) {
-            console.error('[ZendFi] unexpected response shape:', JSON.stringify(payment, null, 2));
-            throw new Error('ZendFi did not return a payment URL');
+        const response = await fetch('https://api.paystack.co/transaction/initialize', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+        });
+
+        const data = await response.json() as any;
+        console.log('[Paystack] initialize response:', JSON.stringify(data, null, 2));
+
+        if (!data.status || !data.data?.authorization_url) {
+            throw new Error(data.message || 'Paystack did not return a payment URL');
         }
 
         return {
-            paymentUrl: payment.payment_url ?? payment.url,
-            reference: payment.id,
+            paymentUrl: data.data.authorization_url,
+            reference: data.data.reference,
         };
     }
 
     /**
-     * Fetch a ZendFi payment by ID to check its current status.
+     * Verify a Paystack transaction by reference.
      */
-    static async getPayment(paymentId: string) {
-        if (!zendfi) {
-            throw new Error('Payment service not configured. Set ZENDFI_API_KEY environment variable.');
+    static async verifyTransaction(reference: string): Promise<PaymentVerifyResult> {
+        if (!PAYSTACK_SECRET_KEY) {
+            throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
         }
-        return (zendfi as any).getPayment(paymentId);
+
+        const response = await fetch(
+            `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
+            {
+                headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+            }
+        );
+
+        const data = await response.json() as any;
+
+        if (!data.status) {
+            throw new Error(data.message || 'Failed to verify transaction');
+        }
+
+        const tx = data.data;
+        return {
+            status: tx.status === 'success' ? 'success' : tx.status === 'abandoned' ? 'abandoned' : 'failed',
+            reference: tx.reference,
+            amount: tx.amount / 100, // kobo → NGN
+            currency: tx.currency,
+        };
     }
 
     /**
-     * Verify a ZendFi webhook signature.
-     *
-     * Header format:  x-zendfi-signature: t={timestamp},v1={signature}
-     * Algorithm:      HMAC-SHA256( "{timestamp}.{rawBody}", webhookSecret )
-     * Replay window:  reject signatures older than 5 minutes
+     * Verify a Paystack webhook signature.
+     * Algorithm: HMAC-SHA512(rawBody, PAYSTACK_SECRET_KEY)
+     * Header:    x-paystack-signature: {hex_digest}
      */
     static verifyWebhookSignature(rawBody: string, signatureHeader: string): boolean {
-        if (!ZENDFI_WEBHOOK_SECRET) return false;
+        if (!PAYSTACK_SECRET_KEY) return false;
 
-        const parts = signatureHeader.split(',');
-        const tPart = parts.find(p => p.startsWith('t='));
-        const v1Part = parts.find(p => p.startsWith('v1='));
-
-        if (!tPart || !v1Part) return false;
-
-        const timestamp = tPart.slice(2);
-        const signature = v1Part.slice(3);
-
-        // Reject signatures older than 5 minutes
-        const ts = parseInt(timestamp, 10);
-        if (isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
-
-        const payload = `${timestamp}.${rawBody}`;
-        const expected = crypto
-            .createHmac('sha256', ZENDFI_WEBHOOK_SECRET)
-            .update(payload)
+        const hash = crypto
+            .createHmac('sha512', PAYSTACK_SECRET_KEY)
+            .update(rawBody)
             .digest('hex');
 
-        return expected === signature;
+        return hash === signatureHeader;
     }
 }
