@@ -16,6 +16,7 @@ export interface AIGeneratedEvent {
     venue: string;
     location: string;
     onlineLink: string;
+    capacity: number | null;
     visibility: 'public' | 'private';
     tickets: Array<{
         name: string;
@@ -49,6 +50,7 @@ Return ONLY a valid JSON object with these exact fields:
 - venue: Venue name string (empty if online)
 - location: Full address string (empty if online)
 - onlineLink: Meeting URL if present, otherwise empty string
+- capacity: Integer max attendee count if mentioned (e.g. "limited to 200", "capacity 500"). null if not mentioned.
 - visibility: "public" or "private". Default "public".
 - tickets: Array of ticket objects, each with: name (string), price (string number, "0" for free), quantity (number, default 100), description (string). Always at least one entry.
 - agenda: Array of schedule items if found, each with: time (HH:MM), activity (string), description (string). Empty array if none.
@@ -69,6 +71,9 @@ function normalise(parsed: any): AIGeneratedEvent {
     parsed.venue = parsed.venue || '';
     parsed.location = parsed.location || '';
     parsed.onlineLink = parsed.onlineLink || '';
+    parsed.capacity = parsed.capacity != null && Number.isFinite(Number(parsed.capacity)) && Number(parsed.capacity) > 0
+        ? Math.round(Number(parsed.capacity))
+        : null;
     return parsed as AIGeneratedEvent;
 }
 
@@ -83,7 +88,7 @@ export class AIService {
                 { role: 'user', content: description }
             ],
             temperature: 0.4,
-            max_tokens: 1500,
+            max_tokens: 2000,
         });
         const raw = completion.choices[0]?.message?.content;
         if (!raw) throw new Error('No response from AI');
@@ -120,7 +125,7 @@ export class AIService {
                 { role: 'user', content: userContent }
             ],
             temperature: 0.3,
-            max_tokens: 1500,
+            max_tokens: 2000,
         });
         const raw = completion.choices[0]?.message?.content;
         if (!raw) throw new Error('No response from AI');
