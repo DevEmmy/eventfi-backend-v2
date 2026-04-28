@@ -31,16 +31,17 @@ export class PaymentService {
      */
     static async initializeTransaction(
         amount: number,
-        currency: string,
+        _currency: string,
         description: string,
         customer: CustomerObject,
-        metadata?: Record<string, any>
+        metadata?: Record<string, any>,
+        callbackUrl?: string
     ): Promise<PaymentInitResult> {
         if (!PAYSTACK_SECRET_KEY) {
             throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
         }
 
-        const payload = {
+        const payload: Record<string, any> = {
             email: customer.email,
             amount: Math.round(amount * 100), // NGN → kobo
             currency: 'NGN',
@@ -51,6 +52,8 @@ export class PaymentService {
                 description,
             },
         };
+
+        if (callbackUrl) payload.callback_url = callbackUrl;
 
         console.log('[Paystack] initialize payload:', JSON.stringify(payload, null, 2));
 

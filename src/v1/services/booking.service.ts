@@ -343,7 +343,8 @@ export class BookingService {
             order.currency,
             `${eventTitle} — Order #${orderId.substring(0, 8).toUpperCase()}`,
             customer,
-            { orderId, eventTitle }
+            { orderId, eventTitle },
+            callbackUrl
         );
 
         // Store the Paystack reference
