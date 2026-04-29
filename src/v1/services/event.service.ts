@@ -3,6 +3,7 @@ import { EventCategory, EventStatus, EventPrivacy, TicketType, Prisma } from '@p
 import { ChatService } from './chat.service';
 import { EmailService } from './email.service';
 import { CloudinaryService } from '../utils/cloudinary.service';
+import { ColorPaletteService } from '../utils/color-palette.service';
 import redis from '../config/redis';
 
 const EVENT_CACHE_TTL = 300;       // 5 min — individual event pages
@@ -71,6 +72,12 @@ export interface CreateEventInput {
 
 export class EventService {
     static async create(userId: string, data: CreateEventInput) {
+        // Extract colour palette from coverImage before uploading (preserves raw data)
+        let colorPalette: { background: string; lightTone: string; textColor: string } | null = null;
+        if (data.media.coverImage) {
+            colorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
+        }
+
         // Upload any base64 media to Cloudinary before writing to DB
         if (data.media.coverImage) {
             data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
@@ -122,6 +129,7 @@ export class EventService {
             coverImage: data.media.coverImage,
             gallery: data.media.gallery || [],
             videoUrl: data.media.videoUrl,
+            ...(colorPalette && { colorPalette }),
 
             // Relations
             organizer: { connect: { id: userId } },
@@ -299,6 +307,12 @@ export class EventService {
         if (!event) throw new Error('Event not found');
         if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
 
+        // Re-extract palette when the cover image is being changed
+        let updatedColorPalette: { background: string; lightTone: string; textColor: string } | null = null;
+        if (data.media?.coverImage) {
+            updatedColorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
+        }
+
         // Upload any base64 media to Cloudinary before writing to DB
         if (data.media?.coverImage) {
             data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
@@ -359,6 +373,7 @@ export class EventService {
                 gallery: data.media.gallery,
                 videoUrl: data.media.videoUrl,
             }),
+            ...(updatedColorPalette && { colorPalette: updatedColorPalette }),
         };
 
         // Handle schedule items: delete old ones and create new ones

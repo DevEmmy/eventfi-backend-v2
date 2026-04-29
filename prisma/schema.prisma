@@ -177,9 +177,10 @@ model Event {
   timezone  String
 
   // Media
-  coverImage String
-  gallery    String[]
-  videoUrl   String?
+  coverImage   String
+  gallery      String[]
+  videoUrl     String?
+  colorPalette Json?    // { background, lightTone, textColor } extracted from coverImage
 
   organizerId String @db.Uuid
   organizer   User   @relation(fields: [organizerId], references: [id])
