@@ -1,4 +1,3 @@
-import Vibrant from 'node-vibrant';
 import OpenAI from 'openai';
 
 export interface ColorPalette {
@@ -7,7 +6,12 @@ export interface ColorPalette {
     textColor: string;   // High-contrast text for readability on background
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Colour math helpers ───────────────────────────────────────────────────────
+
+function hexToRgb(hex: string): [number, number, number] | null {
+    const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+}
 
 function rgbToHex(r: number, g: number, b: number): string {
     return `#${[r, g, b]
@@ -15,90 +19,80 @@ function rgbToHex(r: number, g: number, b: number): string {
         .join('')}`;
 }
 
-// WCAG relative luminance (0 = black, 1 = white)
 function relativeLuminance(r: number, g: number, b: number): number {
-    const toLinear = (c: number) => {
+    const lin = (c: number) => {
         const v = c / 255;
         return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4);
     };
-    return 0.2126 * toLinear(r) + 0.7152 * toLinear(g) + 0.0722 * toLinear(b);
+    return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
-// Blend a colour toward white by `whiteFraction` (0=original, 1=pure white)
-function lighten(r: number, g: number, b: number, whiteFraction: number): [number, number, number] {
-    const w = whiteFraction;
-    return [
-        255 * w + r * (1 - w),
-        255 * w + g * (1 - w),
-        255 * w + b * (1 - w),
-    ];
+// Mix a colour toward white: fraction=0 → original, fraction=1 → pure white
+function lighten(r: number, g: number, b: number, fraction: number): [number, number, number] {
+    return [255 * fraction + r * (1 - fraction), 255 * fraction + g * (1 - fraction), 255 * fraction + b * (1 - fraction)];
 }
 
 function deriveFromRgb(r: number, g: number, b: number): ColorPalette {
-    // Background: 93% white → very faint tint (Luma-style)
-    const [bgR, bgG, bgB] = lighten(r, g, b, 0.93);
-    // Light tone: 75% white → slightly richer surface colour
-    const [ltR, ltG, ltB] = lighten(r, g, b, 0.75);
+    const [bgR, bgG, bgB] = lighten(r, g, b, 0.93); // 93 % white → Luma-style page tint
+    const [ltR, ltG, ltB] = lighten(r, g, b, 0.75); // 75 % white → surface / card tint
 
     const background = rgbToHex(bgR, bgG, bgB);
-    const lightTone = rgbToHex(ltR, ltG, ltB);
-
-    // Almost always dark text since bg is so light, but handle dark images
-    const lum = relativeLuminance(bgR, bgG, bgB);
-    const textColor = lum > 0.35 ? '#111111' : '#f8f9fa';
+    const lightTone  = rgbToHex(ltR, ltG, ltB);
+    const textColor  = relativeLuminance(bgR, bgG, bgB) > 0.35 ? '#111111' : '#f8f9fa';
 
     return { background, lightTone, textColor };
 }
 
-// ── Primary extraction via node-vibrant ──────────────────────────────────────
+// ── Primary: Cloudinary colours ───────────────────────────────────────────────
 
-async function extractFromBuffer(buffer: Buffer): Promise<ColorPalette> {
-    const palette = await Vibrant.from(buffer).getPalette();
+/**
+ * Convert Cloudinary's `colors` upload field ([[hex, pct], ...]) to a palette.
+ * Picks the most dominant mid-tone colour (skips near-black / near-white).
+ * Returns null when the array is empty or unusable.
+ */
+export function fromCloudinaryColors(colors: [string, number][]): ColorPalette | null {
+    if (!colors || colors.length === 0) return null;
 
-    // Prefer Muted (desaturated, best for UI backgrounds), then Vibrant
-    const swatch = palette.Muted ?? palette.Vibrant ?? palette.LightMuted ?? palette.DarkMuted;
-    if (!swatch) {
-        // No usable swatch — return a neutral default
-        return { background: '#f8f9fa', lightTone: '#e9ecef', textColor: '#111111' };
-    }
+    // Prefer the most dominant colour that isn't near-black or near-white
+    const midtone = colors.find(([hex]) => {
+        const rgb = hexToRgb(hex);
+        if (!rgb) return false;
+        const lum = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+        return lum > 25 && lum < 225;
+    }) ?? colors[0]; // fall back to most dominant if all are extreme
 
-    const [r, g, b] = swatch.rgb;
-    return deriveFromRgb(r, g, b);
+    const rgb = hexToRgb(midtone[0]);
+    if (!rgb) return null;
+
+    return deriveFromRgb(...rgb);
 }
 
-// ── AI fallback via GPT-4o ────────────────────────────────────────────────────
+// ── Fallback: GPT-4o-mini vision ──────────────────────────────────────────────
 
-async function extractFromAI(imageSource: string): Promise<ColorPalette | null> {
+async function extractFromAI(source: string): Promise<ColorPalette | null> {
     if (!process.env.OPENAI_API_KEY) return null;
 
     try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-        const imageUrl = imageSource.startsWith('data:') ? imageSource : imageSource;
-
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini',
             response_format: { type: 'json_object' },
-            messages: [
-                {
-                    role: 'user',
-                    content: [
-                        {
-                            type: 'image_url',
-                            image_url: { url: imageUrl, detail: 'low' },
-                        },
-                        {
-                            type: 'text',
-                            text: `Analyze this event image. Return a JSON with exactly these keys:
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image_url', image_url: { url: source, detail: 'low' } },
+                    {
+                        type: 'text',
+                        text: `Analyze this event image. Return a JSON with exactly these keys:
 - "background": A very light hex color for the page background, heavily desaturated (e.g. "#f0f2e8"). Derived from the dominant tone.
 - "lightTone": A slightly richer hex for card/surface backgrounds, same hue family but ~25% less washed out.
 - "textColor": Either "#111111" (dark) or "#f8f9fa" (light), whichever reads best on the background.
 
 Return only the JSON object, no explanation.`,
-                        },
-                    ],
-                },
-            ],
+                    },
+                ],
+            }],
             max_tokens: 100,
         });
 
@@ -108,11 +102,7 @@ Return only the JSON object, no explanation.`,
         const parsed = JSON.parse(content);
         if (!parsed.background || !parsed.lightTone || !parsed.textColor) return null;
 
-        return {
-            background: parsed.background,
-            lightTone: parsed.lightTone,
-            textColor: parsed.textColor,
-        };
+        return { background: parsed.background, lightTone: parsed.lightTone, textColor: parsed.textColor };
     } catch {
         return null;
     }
@@ -122,39 +112,16 @@ Return only the JSON object, no explanation.`,
 
 export class ColorPaletteService {
     /**
-     * Extracts a 3-colour palette (background, lightTone, textColor) from a
-     * cover image. Accepts a base64 data URI or a remote Cloudinary URL.
-     *
-     * Strategy: node-vibrant (fast, no AI cost) → GPT-4o-mini vision fallback.
-     * Returns null if both fail so callers can store nothing and move on.
+     * Extract a palette from an existing Cloudinary URL (used by the seed
+     * script and update path when no Cloudinary upload response is available).
+     * Falls back to GPT-4o-mini vision. Returns null if both fail.
      */
-    static async extract(source: string): Promise<ColorPalette | null> {
-        if (!source) return null;
+    static async extract(cloudinaryUrl: string): Promise<ColorPalette | null> {
+        if (!cloudinaryUrl) return null;
 
-        // ── Primary: pixel-level extraction ─────────────────────────────────
         try {
-            let buffer: Buffer;
-
-            if (source.startsWith('data:image/')) {
-                const base64 = source.replace(/^data:image\/\w+;base64,/, '');
-                buffer = Buffer.from(base64, 'base64');
-            } else {
-                // Remote URL — fetch the image bytes
-                const response = await fetch(source);
-                if (!response.ok) throw new Error(`fetch ${response.status}`);
-                buffer = Buffer.from(await response.arrayBuffer());
-            }
-
-            return await extractFromBuffer(buffer);
-        } catch (err) {
-            console.warn('[ColorPalette] vibrant extraction failed, falling back to AI:', err);
-        }
-
-        // ── Fallback: AI vision ──────────────────────────────────────────────
-        try {
-            return await extractFromAI(source);
-        } catch (err) {
-            console.warn('[ColorPalette] AI fallback also failed:', err);
+            return await extractFromAI(cloudinaryUrl);
+        } catch {
             return null;
         }
     }

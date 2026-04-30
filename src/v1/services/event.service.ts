@@ -3,7 +3,7 @@ import { EventCategory, EventStatus, EventPrivacy, TicketType, Prisma } from '@p
 import { ChatService } from './chat.service';
 import { EmailService } from './email.service';
 import { CloudinaryService } from '../utils/cloudinary.service';
-import { ColorPaletteService } from '../utils/color-palette.service';
+import { ColorPaletteService, fromCloudinaryColors } from '../utils/color-palette.service';
 import redis from '../config/redis';
 
 const EVENT_CACHE_TTL = 300;       // 5 min — individual event pages
@@ -72,17 +72,21 @@ export interface CreateEventInput {
 
 export class EventService {
     static async create(userId: string, data: CreateEventInput) {
-        // Extract colour palette from coverImage before uploading (preserves raw data)
+        // Upload cover image and extract palette in one Cloudinary call
         let colorPalette: { background: string; lightTone: string; textColor: string } | null = null;
         if (data.media.coverImage) {
-            colorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
-        }
-
-        // Upload any base64 media to Cloudinary before writing to DB
-        if (data.media.coverImage) {
-            data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
-                data.media.coverImage, 'events', `event_cover_${userId}_${Date.now()}`
-            );
+            if (CloudinaryService.isBase64DataUri(data.media.coverImage)) {
+                const { url, colors } = await CloudinaryService.uploadWithColors(
+                    data.media.coverImage, 'events', `event_cover_${userId}_${Date.now()}`
+                );
+                data.media.coverImage = url;
+                // Primary: Cloudinary colour analysis; fallback: GPT-4o-mini vision
+                colorPalette = fromCloudinaryColors(colors)
+                    ?? await ColorPaletteService.extract(url).catch(() => null);
+            } else {
+                // Already a Cloudinary URL (e.g. re-submission) — extract via AI
+                colorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
+            }
         }
         if (data.media.gallery && data.media.gallery.length > 0) {
             data.media.gallery = await Promise.all(
@@ -307,17 +311,22 @@ export class EventService {
         if (!event) throw new Error('Event not found');
         if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
 
-        // Re-extract palette when the cover image is being changed
+        // Upload new cover image and re-extract palette when the image changes
         let updatedColorPalette: { background: string; lightTone: string; textColor: string } | null = null;
         if (data.media?.coverImage) {
-            updatedColorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
-        }
-
-        // Upload any base64 media to Cloudinary before writing to DB
-        if (data.media?.coverImage) {
-            data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
-                data.media.coverImage, 'events', `event_cover_${id}`
-            );
+            if (CloudinaryService.isBase64DataUri(data.media.coverImage)) {
+                const { url, colors } = await CloudinaryService.uploadWithColors(
+                    data.media.coverImage, 'events', `event_cover_${id}`
+                );
+                data.media.coverImage = url;
+                updatedColorPalette = fromCloudinaryColors(colors)
+                    ?? await ColorPaletteService.extract(url).catch(() => null);
+            } else {
+                data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
+                    data.media.coverImage, 'events', `event_cover_${id}`
+                );
+                updatedColorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
+            }
         }
         if (data.media?.gallery && data.media.gallery.length > 0) {
             data.media.gallery = await Promise.all(

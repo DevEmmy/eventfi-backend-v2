@@ -69,4 +69,29 @@ export class CloudinaryService {
         // Already a remote URL — return as-is
         return value;
     }
+
+    /**
+     * Upload a base64 data URI to Cloudinary and return both the secure URL
+     * and Cloudinary's dominant colour analysis ([[hex, pct], ...]).
+     * Only call this when `source` is a base64 data URI — for existing URLs
+     * use `ensureCloudinaryUrl` instead.
+     */
+    static async uploadWithColors(
+        source: string,
+        folder: CloudinaryFolder,
+        publicId?: string,
+    ): Promise<{ url: string; colors: [string, number][] }> {
+        const result = await cloudinary.uploader.upload(source, {
+            folder,
+            ...(publicId ? { public_id: publicId, overwrite: true, invalidate: true } : {}),
+            resource_type: 'image',
+            transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+            colors: true,
+        });
+
+        return {
+            url: result.secure_url,
+            colors: (result.colors ?? []) as [string, number][],
+        };
+    }
 }
