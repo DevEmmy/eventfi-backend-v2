@@ -80,9 +80,9 @@ export class EventService {
                     data.media.coverImage, 'events', `event_cover_${userId}_${Date.now()}`
                 );
                 data.media.coverImage = url;
-                // Primary: Cloudinary colour analysis; fallback: GPT-4o-mini vision
-                colorPalette = fromCloudinaryColors(colors)
-                    ?? await ColorPaletteService.extract(url).catch(() => null);
+                // Primary: AI vision (understands design intent); fallback: Cloudinary pixel analysis
+                colorPalette = await ColorPaletteService.extract(url).catch(() => null)
+                    ?? fromCloudinaryColors(colors);
             } else {
                 // Already a Cloudinary URL (e.g. re-submission) — extract via AI
                 colorPalette = await ColorPaletteService.extract(data.media.coverImage).catch(() => null);
@@ -319,8 +319,8 @@ export class EventService {
                     data.media.coverImage, 'events', `event_cover_${id}`
                 );
                 data.media.coverImage = url;
-                updatedColorPalette = fromCloudinaryColors(colors)
-                    ?? await ColorPaletteService.extract(url).catch(() => null);
+                updatedColorPalette = await ColorPaletteService.extract(url).catch(() => null)
+                    ?? fromCloudinaryColors(colors);
             } else {
                 data.media.coverImage = await CloudinaryService.ensureCloudinaryUrl(
                     data.media.coverImage, 'events', `event_cover_${id}`

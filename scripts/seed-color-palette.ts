@@ -20,7 +20,7 @@ import pg from 'pg';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { v2 as cloudinary } from 'cloudinary';
-import { fromCloudinaryColors, ColorPaletteService, ColorPalette } from '../src/v1/utils/color-palette.service';
+import { fromCloudinaryColors, extractFromAI, ColorPaletteService, ColorPalette } from '../src/v1/utils/color-palette.service';
 
 // ── Prisma setup ──────────────────────────────────────────────────────────────
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
@@ -107,26 +107,26 @@ async function processEvent(id: string): Promise<boolean> {
     let palette: ColorPalette | null = null;
     let method = '';
 
-    // 1. Cloudinary admin API
-    try {
-        palette = await extractViaCloudinary(event.coverImage);
-        method = 'cloudinary';
-    } catch (err: any) {
-        console.log(yellow(`cloudinary failed (${err?.message ?? err})`));
-        process.stdout.write('  trying AI fallback… ');
+    // 1. GPT-4o vision — understands design intent
+    if (!process.env.OPENAI_API_KEY) {
+        console.log(yellow('OpenAI key not set — skipping to Cloudinary fallback'));
+    } else {
+        try {
+            palette = await extractFromAI(event.coverImage);
+            if (palette) method = 'openai (gpt-4o)';
+        } catch (err: any) {
+            console.log(yellow(`AI failed (${err?.message ?? err}), trying Cloudinary…`));
+        }
     }
 
-    // 2. GPT-4o-mini vision
+    // 2. Cloudinary admin API — pixel-based fallback
     if (!palette) {
-        if (!process.env.OPENAI_API_KEY) {
-            console.log(red('skipped — OPENAI_API_KEY not set in .env'));
-        } else {
-            try {
-                palette = await ColorPaletteService.extract(event.coverImage);
-                if (palette) method = 'openai';
-            } catch (err: any) {
-                console.log(red(`failed (${err?.message ?? err})`));
-            }
+        process.stdout.write('  trying Cloudinary fallback… ');
+        try {
+            palette = await extractViaCloudinary(event.coverImage);
+            if (palette) method = 'cloudinary';
+        } catch (err: any) {
+            console.log(red(`cloudinary failed (${err?.message ?? err})`));
         }
     }
 

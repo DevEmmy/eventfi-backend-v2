@@ -91,39 +91,53 @@ export function fromCloudinaryColors(colors: [string, number][]): ColorPalette |
     return rgb ? deriveFromRgb(...rgb) : null;
 }
 
-// ── Fallback: GPT-4o-mini vision ──────────────────────────────────────────────
+// ── Primary: GPT-4o vision ────────────────────────────────────────────────────
 
-async function extractFromAI(source: string): Promise<ColorPalette | null> {
+const AI_PROMPT = `You are a UI/UX designer building a themed event page (similar to lu.ma).
+Analyze this event poster/image and return a color palette JSON. Think like a designer — consider the event's mood, brand identity, and visual hierarchy, not just dominant pixel counts.
+
+Return exactly these keys:
+
+"background"  — Page background. Must be VERY LIGHT — the image's ambient hue mixed with ~92% white. Barely visible tint that sets the mood without overpowering. Example: "#f0f2e8", "#fdf4f0", "#f0f4ff".
+
+"lightTone"   — Card/surface background. Same hue family, ~25% more saturated than background (still light). Used for ticket cards, info boxes. Example: "#e8ece0", "#fce8e4", "#e4eaff".
+
+"accent"      — The event's primary brand color. Vibrant and saturated — this becomes the button color, selected states, links. Must contrast well with white text (not too light, not too dark). Think: what is the strongest, most memorable color in this design? Example: "#2563eb", "#dc2626", "#7c3aed", "#059669".
+
+"textColor"   — Body text color. Return "#111111" for light backgrounds (almost always), "#f8f9fa" only if background is genuinely dark.
+
+Rules:
+- background and lightTone must be light enough to read dark text on them
+- accent must be the most visually dominant brand color — do not pick a muted or washed version
+- If the poster has a strong dominant color (e.g. deep blue, vivid red), that should be the accent
+- Return ONLY the JSON object`;
+
+export async function extractFromAI(source: string): Promise<ColorPalette | null> {
     if (!process.env.OPENAI_API_KEY) return null;
     try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4o',
             response_format: { type: 'json_object' },
             messages: [{
                 role: 'user',
                 content: [
-                    { type: 'image_url', image_url: { url: source, detail: 'low' } },
-                    {
-                        type: 'text',
-                        text: `Analyze this event image. Return a JSON with exactly these keys:
-- "background": A very light hex color for the page background, heavily desaturated (e.g. "#f0f2e8"). Derived from the dominant tone.
-- "lightTone": A slightly richer hex for card/surface backgrounds, same hue family but ~25% less washed out.
-- "accent": A vibrant, saturated hex derived from the dominant hue — suitable as a button/link colour with white text (e.g. "#3a7bd5", "#b5451b"). Should NOT be near-white or near-black.
-- "textColor": Either "#111111" (dark) or "#f8f9fa" (light), whichever reads best on the background.
-
-Return only the JSON object, no explanation.`,
-                    },
+                    { type: 'image_url', image_url: { url: source, detail: 'high' } },
+                    { type: 'text', text: AI_PROMPT },
                 ],
             }],
-            max_tokens: 120,
+            max_tokens: 150,
         });
 
         const content = response.choices[0]?.message?.content;
         if (!content) return null;
         const parsed = JSON.parse(content);
-        if (!parsed.background || !parsed.lightTone || !parsed.accent || !parsed.textColor) return null;
-        return { background: parsed.background, lightTone: parsed.lightTone, accent: parsed.accent, textColor: parsed.textColor };
+        if (!parsed.background || !parsed.lightTone || !parsed.accent) return null;
+        // Clamp textColor — only two valid values; AI occasionally hallucinates a hue here
+        const lum = hexToRgb(parsed.background);
+        const textColor = lum && (0.299 * lum[0] + 0.587 * lum[1] + 0.114 * lum[2]) < 128
+            ? '#f8f9fa' : '#111111';
+        return { background: parsed.background, lightTone: parsed.lightTone, accent: parsed.accent, textColor };
     } catch {
         return null;
     }
@@ -132,6 +146,10 @@ Return only the JSON object, no explanation.`,
 // ── Public API ────────────────────────────────────────────────────────────────
 
 export class ColorPaletteService {
+    /**
+     * Extract palette from an existing Cloudinary URL.
+     * Used by seed script and update path when no upload response is available.
+     */
     static async extract(cloudinaryUrl: string): Promise<ColorPalette | null> {
         if (!cloudinaryUrl) return null;
         try { return await extractFromAI(cloudinaryUrl); } catch { return null; }
