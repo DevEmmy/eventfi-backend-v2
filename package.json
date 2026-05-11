@@ -10,7 +10,9 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:reset": "prisma migrate reset",
     "prisma:studio": "prisma studio",
-    "seed:palette": "ts-node scripts/seed-color-palette.ts"
+    "seed:palette": "ts-node scripts/seed-color-palette.ts",
+    "seed:palette:all": "ts-node scripts/seed-color-palette.ts --all",
+    "seed:palette:dry": "ts-node scripts/seed-color-palette.ts --all --dry-run"
   },
   "keywords": [],
   "author": "",
