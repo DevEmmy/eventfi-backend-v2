@@ -1,93 +1,66 @@
-import { Resend } from 'resend';
+import nodemailer from 'nodemailer';
 import { EmailTemplates } from '../utils/email.templates';
 
-/**
- * Email Service
- * Handles sending transactional and automated emails using Resend (HTTP-based).
- */
 export class EmailService {
-    private static resend: Resend | null = null;
+    private static transporter: nodemailer.Transporter | null = null;
 
-    /**
-     * Initialize the Resend client
-     */
-    private static getClient(): Resend {
-        if (!this.resend) {
-            const apiKey = process.env.RESEND_API_KEY;
-            if (!apiKey) {
-                console.error('[EmailService] RESEND_API_KEY is missing in .env');
-                throw new Error('RESEND_API_KEY is not configured');
+    private static getTransporter(): nodemailer.Transporter {
+        if (!this.transporter) {
+            const user = process.env.SMTP_USER;
+            const pass = process.env.SMTP_PASS;
+
+            if (!user || !pass) {
+                console.error('[EmailService] SMTP_USER or SMTP_PASS is missing in .env');
+                throw new Error('SMTP credentials are not configured');
             }
-            this.resend = new Resend(apiKey);
-            console.log('[EmailService] Resend client initialized.');
-        }
-        return this.resend;
-    }
 
-    /**
-     * Send a general email
-     */
-    static async send(to: string, subject: string, html: string, text?: string) {
-        try {
-            const client = this.getClient();
-            const from = process.env.EMAIL_FROM || 'EventFi <noreply@eventfi.com>';
-
-            const { data, error } = await client.emails.send({
-                from,
-                to: [to],
-                subject,
-                html,
-                text: text || '',
+            this.transporter = nodemailer.createTransport({
+                host: 'smtp.gmail.com',
+                port: 587,
+                secure: false,
+                auth: { user, pass },
             });
 
-            if (error) {
-                console.error('[EmailService] Resend error:', error);
-                return null;
-            }
+            console.log('[EmailService] Nodemailer SMTP transporter initialized.');
+        }
+        return this.transporter;
+    }
 
-            console.log(`[EmailService] Email sent to ${to}: ${data?.id}`);
-            return data;
+    static async send(to: string, subject: string, html: string, text?: string) {
+        try {
+            const transporter = this.getTransporter();
+            const from = process.env.EMAIL_FROM || `EventFi <${process.env.SMTP_USER}>`;
+
+            const info = await transporter.sendMail({ from, to, subject, html, text: text || '' });
+
+            console.log(`[EmailService] Email sent to ${to}: ${info.messageId}`);
+            return info;
         } catch (error) {
             console.error('[EmailService] Error sending email:', error);
             return null;
         }
     }
 
-    /**
-     * Send Welcome Email
-     */
     static async sendWelcomeEmail(to: string, name: string) {
         const template = EmailTemplates.welcome(name);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    /**
-     * Send Password Reset Email
-     */
     static async sendPasswordResetEmail(to: string, resetUrl: string) {
         const template = EmailTemplates.passwordReset(resetUrl);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    /**
-     * Send Ticket Confirmation Email
-     */
     static async sendTicketConfirmation(to: string, data: { eventTitle: string, userTitle: string, qrCodeUrl?: string, startDate: string, venue: string }) {
         const template = EmailTemplates.ticketConfirmation(data);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    /**
-     * Send Organizer Announcement
-     */
     static async sendAnnouncement(to: string, data: { eventTitle: string, subject: string, content: string, organizerName: string }) {
         const template = EmailTemplates.announcement(data);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    /**
-     * Send Location Announced notification to all registered attendees
-     */
     static async sendLocationAnnounced(to: string, data: { eventTitle: string, eventDate: string, venueName?: string, address?: string, eventUrl: string }) {
         const template = EmailTemplates.locationAnnounced(data);
         return this.send(to, template.subject, template.html, template.text);
