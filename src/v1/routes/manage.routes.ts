@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ManageController } from '../controllers/manage.controller';
+import { ImportController, csvUploadMiddleware } from '../controllers/import.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
 const router = Router();
@@ -26,5 +27,9 @@ router.delete('/:eventId/team/:memberId', authenticate, ManageController.removeT
 // Event actions
 router.post('/:eventId/duplicate', authenticate, ManageController.duplicateEvent);
 router.post('/:eventId/cancel', authenticate, ManageController.cancelEvent);
+
+// Google Forms import
+router.post('/:eventId/import/preview', authenticate, csvUploadMiddleware, ImportController.previewHeaders);
+router.post('/:eventId/import/google-forms', authenticate, csvUploadMiddleware, ImportController.importGoogleForms);
 
 export default router;
