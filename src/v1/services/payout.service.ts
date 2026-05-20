@@ -5,7 +5,10 @@ import { emailQueue } from '../jobs/email.queue';
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 /** Minimum payout in the event's base currency (NGN). */
-const MIN_PAYOUT_AMOUNT = 1_000;
+const MIN_PAYOUT_AMOUNT = 5_000;
+
+/** Maximum total payout an organizer can request within a rolling 24-hour window (NGN). */
+const MAX_DAILY_PAYOUT_AMOUNT = 2_000_000;
 
 /**
  * Hours after an event ends before a payout can be requested.
@@ -279,8 +282,27 @@ export class PayoutService {
         const balance = await computeBalance(organizerId, eventId);
         if (balance.netAmount < MIN_PAYOUT_AMOUNT) {
             throw new Error(
-                `Minimum payout is ${MIN_PAYOUT_AMOUNT} NGN. ` +
-                `Available balance is ${balance.netAmount.toFixed(2)} NGN.`
+                `Minimum payout is ₦${MIN_PAYOUT_AMOUNT.toLocaleString()} NGN. ` +
+                `Available balance is ₦${balance.netAmount.toFixed(2)} NGN.`
+            );
+        }
+
+        // ── 5b. Enforce 24-hour rolling withdrawal limit ──────────────────────
+        const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const dailyAgg = await prisma.payoutRequest.aggregate({
+            where: {
+                organizerId,
+                status: { in: ACTIVE_PAYOUT_STATUSES as any },
+                createdAt: { gte: since },
+            },
+            _sum: { netAmount: true },
+        });
+        const dailyTotal = (dailyAgg._sum.netAmount ?? 0) + balance.netAmount;
+        if (dailyTotal > MAX_DAILY_PAYOUT_AMOUNT) {
+            const remaining = Math.max(0, MAX_DAILY_PAYOUT_AMOUNT - (dailyAgg._sum.netAmount ?? 0));
+            throw new Error(
+                `Daily withdrawal limit of ₦${MAX_DAILY_PAYOUT_AMOUNT.toLocaleString()} reached. ` +
+                `You can withdraw up to ₦${remaining.toLocaleString()} more today.`
             );
         }
 
