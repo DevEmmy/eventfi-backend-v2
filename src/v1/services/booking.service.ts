@@ -5,7 +5,8 @@ import { PaymentService, CustomerObject } from './payment.service';
 import { NotificationService } from './notification.service';
 import { emailQueue } from '../jobs/email.queue';
 
-const SERVICE_FEE_PERCENT = 0.05; // 5% service fee
+const SERVICE_FEE_PERCENT = 0.04; // 4% platform fee
+const SERVICE_FEE_FLAT = 200;    // ₦200 flat fee (covers Paystack's transaction charge)
 const ORDER_EXPIRY_MINUTES = 30;
 
 /**
@@ -158,7 +159,7 @@ export class BookingService {
             });
         }
 
-        const serviceFee = Math.round(subtotal * SERVICE_FEE_PERCENT);
+        const serviceFee = subtotal > 0 ? Math.round(subtotal * SERVICE_FEE_PERCENT) + SERVICE_FEE_FLAT : 0;
         const total = subtotal + serviceFee;
         // Currency comes from the already-fetched ticket map — no extra DB round-trip
         const currency = ticketMap.get(items[0].ticketTypeId)?.currency || 'NGN';
