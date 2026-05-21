@@ -95,7 +95,7 @@ export class ManageService {
             event,
             stats,
             ticketBreakdown,
-            userRole: role.toLowerCase()
+            userRole: role.toLowerCase().replace('_', '-')
         };
     }
 
