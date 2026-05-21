@@ -109,29 +109,58 @@ export class UserService {
     }
 
     /**
-     * Get user's hosted events with filtering
+     * Get events the user can manage: events they organize plus events
+     * where they are an active team member.
      */
     static async getUserEvents(userId: string, status?: string, page: number = 1, limit: number = 10) {
         const skip = (page - 1) * limit;
-        const where: any = { organizerId: userId };
-        if (status) where.status = status;
 
-        const [total, events] = await prisma.$transaction([
-            prisma.event.count({ where }),
+        // Fetch team memberships to know which events to include and at what role
+        const memberships = await prisma.eventTeamMember.findMany({
+            where: { userId, status: 'ACTIVE' },
+            select: { eventId: true, role: true },
+        });
+        const teamEventIds = memberships.map(m => m.eventId);
+        const teamRoleByEventId = new Map(memberships.map(m => [m.eventId, m.role as string]));
+
+        const baseInclude = {
+            tickets: { select: { type: true, price: true, currency: true } },
+        };
+
+        const statusFilter = status ? { status } : {};
+
+        // Run both queries in parallel
+        const [organizerEvents, teamEvents] = await Promise.all([
             prisma.event.findMany({
-                where,
-                skip,
-                take: limit,
+                where: { organizerId: userId, ...statusFilter },
                 orderBy: { createdAt: 'desc' },
-                include: {
-                    tickets: { select: { type: true, price: true, currency: true } },
-                }
-            })
+                include: baseInclude,
+            }),
+            teamEventIds.length > 0
+                ? prisma.event.findMany({
+                    where: { id: { in: teamEventIds }, ...statusFilter },
+                    orderBy: { createdAt: 'desc' },
+                    include: baseInclude,
+                })
+                : Promise.resolve([]),
         ]);
+
+        // Combine, tag with the user's role, sort descending, paginate in-memory
+        const combined = [
+            ...organizerEvents.map(e => ({ ...e, userRole: 'organizer' })),
+            ...teamEvents.map(e => ({
+                ...e,
+                userRole: (teamRoleByEventId.get(e.id) ?? 'ASSISTANT')
+                    .toLowerCase().replace('_', '-'),
+            })),
+        ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+        const total = combined.length;
+        const data = combined.slice(skip, skip + limit);
 
         return {
             meta: { total, page, limit, totalPages: Math.ceil(total / limit) },
-            data: events
+            data,
         };
     }
 
