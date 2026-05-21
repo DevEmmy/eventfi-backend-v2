@@ -309,7 +309,18 @@ export class EventService {
         const event = await prisma.event.findUnique({ where: { id } });
 
         if (!event) throw new Error('Event not found');
-        if (event.organizerId !== userId) throw new Error('Unauthorized: You can only update your own events');
+
+        if (event.organizerId !== userId) {
+            // Allow team members who have the canEdit permission (CO_HOST role)
+            const teamMember = await prisma.eventTeamMember.findFirst({
+                where: { eventId: id, userId, status: 'ACTIVE' },
+                select: { role: true }
+            });
+            const editableRoles = new Set(['CO_HOST']);
+            if (!teamMember || !editableRoles.has(teamMember.role)) {
+                throw new Error('Unauthorized: You do not have permission to update this event');
+            }
+        }
 
         // Upload new cover image and re-extract palette when the image changes
         let updatedColorPalette: { background: string; lightTone: string; textColor: string } | null = null;
@@ -559,7 +570,13 @@ export class EventService {
     }) {
         const event = await prisma.event.findUnique({ where: { id: eventId } });
         if (!event) throw new Error('Event not found');
-        if (event.organizerId !== userId) throw new Error('Unauthorized');
+        if (event.organizerId !== userId) {
+            const tm = await prisma.eventTeamMember.findFirst({
+                where: { eventId, userId, status: 'ACTIVE' },
+                select: { role: true }
+            });
+            if (!tm || tm.role !== 'CO_HOST') throw new Error('Unauthorized');
+        }
 
         const count = await prisma.eventSpeaker.count({ where: { eventId } });
         return prisma.eventSpeaker.create({
@@ -573,10 +590,16 @@ export class EventService {
     }>) {
         const speaker = await prisma.eventSpeaker.findUnique({
             where: { id: speakerId },
-            include: { event: { select: { organizerId: true } } },
+            include: { event: { select: { id: true, organizerId: true } } },
         });
         if (!speaker) throw new Error('Speaker not found');
-        if (speaker.event.organizerId !== userId) throw new Error('Unauthorized');
+        if (speaker.event.organizerId !== userId) {
+            const tm = await prisma.eventTeamMember.findFirst({
+                where: { eventId: speaker.event.id, userId, status: 'ACTIVE' },
+                select: { role: true }
+            });
+            if (!tm || tm.role !== 'CO_HOST') throw new Error('Unauthorized');
+        }
 
         return prisma.eventSpeaker.update({ where: { id: speakerId }, data });
     }
@@ -584,10 +607,16 @@ export class EventService {
     static async deleteSpeaker(speakerId: string, userId: string) {
         const speaker = await prisma.eventSpeaker.findUnique({
             where: { id: speakerId },
-            include: { event: { select: { organizerId: true } } },
+            include: { event: { select: { id: true, organizerId: true } } },
         });
         if (!speaker) throw new Error('Speaker not found');
-        if (speaker.event.organizerId !== userId) throw new Error('Unauthorized');
+        if (speaker.event.organizerId !== userId) {
+            const tm = await prisma.eventTeamMember.findFirst({
+                where: { eventId: speaker.event.id, userId, status: 'ACTIVE' },
+                select: { role: true }
+            });
+            if (!tm || tm.role !== 'CO_HOST') throw new Error('Unauthorized');
+        }
 
         await prisma.eventSpeaker.delete({ where: { id: speakerId } });
         return { message: 'Speaker removed' };

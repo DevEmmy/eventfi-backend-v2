@@ -113,7 +113,8 @@ export function initializeChatSocket(httpServer: HttpServer) {
 
                 socket.emit('chat:joined', {
                     chat: result.chat,
-                    recentMessages: messagesResult.messages
+                    recentMessages: messagesResult.messages,
+                    hasMore: messagesResult.hasMore
                 });
 
                 // Notify others
