@@ -4,6 +4,7 @@ import { ChatService } from './chat.service';
 import { EmailService } from './email.service';
 import { CloudinaryService } from '../utils/cloudinary.service';
 import { ColorPaletteService, fromCloudinaryColors } from '../utils/color-palette.service';
+import { CommunityAccessService } from './communityAccess.service';
 import redis from '../config/redis';
 
 const EVENT_CACHE_TTL = 300;       // 5 min — individual event pages
@@ -68,10 +69,34 @@ export interface CreateEventInput {
         description?: string;
         order?: number;
     }[];
+    communityId?: string;
+    chapterId?: string;
+}
+
+/**
+ * Verify the user can attach an event to the given community/chapter and that
+ * the chapter (if any) belongs to that community.
+ */
+async function checkCommunityEventAccess(userId: string, communityId: string, chapterId?: string) {
+    await CommunityAccessService.checkAccess(userId, communityId, {
+        chapterId: chapterId ?? null,
+        minRole: 'CHAPTER_LEAD',
+    });
+
+    if (chapterId) {
+        const chapter = await prisma.communityChapter.findUnique({ where: { id: chapterId } });
+        if (!chapter || chapter.communityId !== communityId) {
+            throw new Error('Chapter not found in this community');
+        }
+    }
 }
 
 export class EventService {
     static async create(userId: string, data: CreateEventInput) {
+        if (data.communityId) {
+            await checkCommunityEventAccess(userId, data.communityId, data.chapterId);
+        }
+
         // Upload cover image and extract palette in one Cloudinary call
         let colorPalette: { background: string; lightTone: string; textColor: string } | null = null;
         if (data.media.coverImage) {
@@ -137,6 +162,8 @@ export class EventService {
 
             // Relations
             organizer: { connect: { id: userId } },
+            ...(data.communityId && { community: { connect: { id: data.communityId } } }),
+            ...(data.chapterId && { chapter: { connect: { id: data.chapterId } } }),
             tickets: {
                 create: data.tickets.map(ticket => ({
                     name: ticket.name,
@@ -322,6 +349,10 @@ export class EventService {
             }
         }
 
+        if (data.communityId) {
+            await checkCommunityEventAccess(userId, data.communityId, data.chapterId);
+        }
+
         // Upload new cover image and re-extract palette when the image changes
         let updatedColorPalette: { background: string; lightTone: string; textColor: string } | null = null;
         if (data.media?.coverImage) {
@@ -394,6 +425,14 @@ export class EventService {
                 videoUrl: data.media.videoUrl,
             }),
             ...(updatedColorPalette && { colorPalette: updatedColorPalette }),
+
+            // Community / chapter linkage
+            ...(data.communityId !== undefined && {
+                community: data.communityId ? { connect: { id: data.communityId } } : { disconnect: true },
+            }),
+            ...(data.chapterId !== undefined && {
+                chapter: data.chapterId ? { connect: { id: data.chapterId } } : { disconnect: true },
+            }),
         };
 
         // Handle schedule items: delete old ones and create new ones

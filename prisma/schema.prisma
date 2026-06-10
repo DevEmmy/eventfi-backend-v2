@@ -55,6 +55,10 @@ model User {
   activityEntries  ActivityEntry[]
   payoutAccount    PayoutAccount?
   payoutRequests   PayoutRequest[]
+
+  ownedCommunities     Community[]       @relation("OwnedCommunities")
+  communityMemberships CommunityMember[]
+  communityFollows     CommunityFollow[]
 }
 
 // ============ NOTIFICATIONS ============
@@ -73,6 +77,7 @@ enum NotificationType {
   PAYMENT_RECEIVED
   MESSAGE
   SYSTEM
+  COMMUNITY_INVITE
 }
 
 model Notification {
@@ -185,6 +190,11 @@ model Event {
   organizerId String @db.Uuid
   organizer   User   @relation(fields: [organizerId], references: [id])
 
+  communityId String?           @db.Uuid
+  community   Community?        @relation(fields: [communityId], references: [id])
+  chapterId   String?           @db.Uuid
+  chapter     CommunityChapter? @relation(fields: [chapterId], references: [id])
+
   tickets       Ticket[]
   reviews       Review[]
   scheduleItems ScheduleItem[]
@@ -209,6 +219,8 @@ model Event {
   @@index([organizerId, status])
   @@index([status, startDate])
   @@index([category, status])
+  @@index([communityId])
+  @@index([chapterId])
 }
 
 model Ticket {
@@ -733,4 +745,86 @@ model PayoutRequest {
   @@index([organizerId, status])
   @@index([eventId])
   @@index([status, createdAt])
+}
+
+// ==================== COMMUNITIES ====================
+
+enum CommunityRole {
+  OWNER
+  ADMIN
+  CHAPTER_LEAD
+}
+
+enum CommunityMemberStatus {
+  PENDING
+  ACTIVE
+}
+
+model Community {
+  id          String  @id @default(uuid()) @db.Uuid
+  name        String
+  slug        String  @unique
+  description String?
+  logo        String?
+  bannerImage String?
+
+  ownerId String @db.Uuid
+  owner   User   @relation("OwnedCommunities", fields: [ownerId], references: [id])
+
+  chapters  CommunityChapter[]
+  members   CommunityMember[]
+  events    Event[]
+  followers CommunityFollow[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([ownerId])
+}
+
+model CommunityChapter {
+  id          String    @id @default(uuid()) @db.Uuid
+  communityId String    @db.Uuid
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  name        String
+  slug        String
+
+  members CommunityMember[]
+  events  Event[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([communityId, slug])
+}
+
+model CommunityMember {
+  id          String                @id @default(uuid()) @db.Uuid
+  communityId String                @db.Uuid
+  community   Community             @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  userId      String?               @db.Uuid // null until invite accepted
+  user        User?                 @relation(fields: [userId], references: [id])
+  email       String
+  role        CommunityRole
+  chapterId   String?               @db.Uuid // null = community-wide (OWNER/ADMIN)
+  chapter     CommunityChapter?     @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+  status      CommunityMemberStatus @default(PENDING)
+  inviteToken String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId])
+  @@index([userId])
+}
+
+model CommunityFollow {
+  id          String    @id @default(uuid()) @db.Uuid
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id])
+  communityId String    @db.Uuid
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, communityId])
 }

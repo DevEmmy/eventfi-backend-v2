@@ -65,6 +65,8 @@ export const createEventSchema = z.object({
     tickets: z.array(ticketSchema).min(1, 'At least one ticket type is required'),
     media: mediaSchema.optional(),
     scheduleItems: z.array(scheduleItemSchema).optional(),
+    communityId: z.string().uuid().optional(),
+    chapterId: z.string().uuid().optional(),
 });
 
 export const updateEventSchema = createEventSchema.partial();

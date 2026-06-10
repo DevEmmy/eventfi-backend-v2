@@ -288,4 +288,52 @@ export const EmailTemplates = {
         `,
         text: `Hi ${data.name}, ${data.currency} ${data.netAmount.toLocaleString()} has been transferred to your bank. Reference: ${data.paymentReference}. Keep this for your records.`
     }),
+
+    // ─── Community emails ──────────────────────────────────────────────────────
+
+    /**
+     * Community Member Invitation Template (for users who don't have an account yet,
+     * or need to accept the invite explicitly)
+     */
+    communityInvitation: (data: { communityName: string, role: string, chapterName?: string, inviteUrl: string }) => ({
+        subject: `You're invited to join ${data.communityName} on EventFi`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">Community Invitation</h2>
+                <p>You've been invited to join <strong>${data.communityName}</strong> as ${data.chapterName ? `the <strong>${data.role}</strong> for <strong>${data.chapterName}</strong>` : `an <strong>${data.role}</strong>`}.</p>
+                <p>Click the button below to accept your invitation.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${data.inviteUrl}"
+                       style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       Accept Invitation
+                    </a>
+                </div>
+                <p>If you weren't expecting this, you can safely ignore this email.</p>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `You've been invited to join ${data.communityName} as ${data.chapterName ? `${data.role} for ${data.chapterName}` : data.role}. Accept at: ${data.inviteUrl}`
+    }),
+
+    /**
+     * Community Member Added Notification (for existing users added directly to a community)
+     */
+    communityMemberAdded: (data: { communityName: string, role: string, chapterName?: string, communityUrl: string }) => ({
+        subject: `You've been added to ${data.communityName}`,
+        html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+                <h2 style="color: #6366f1;">You're part of the team!</h2>
+                <p>You've been added to <strong>${data.communityName}</strong> as ${data.chapterName ? `the <strong>${data.role}</strong> for <strong>${data.chapterName}</strong>` : `an <strong>${data.role}</strong>`}.</p>
+                <p>You can now manage this community from your dashboard.</p>
+                <div style="margin: 30px 0;">
+                    <a href="${data.communityUrl}"
+                       style="background-color: #6366f1; color: white; padding: 12px 24px; text-decoration: none; border-radius: 5px; font-weight: bold;">
+                       View Community
+                    </a>
+                </div>
+                <p>The EventFi Team</p>
+            </div>
+        `,
+        text: `You've been added to ${data.communityName} as ${data.chapterName ? `${data.role} for ${data.chapterName}` : data.role}. View it at: ${data.communityUrl}`
+    }),
 };

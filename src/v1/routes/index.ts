@@ -11,8 +11,10 @@ import notificationRoutes from './notification.routes';
 import vendorRoutes from './vendor.routes';
 import adminRoutes from './admin.routes';
 import payoutRoutes from './payout.routes';
+import communityRoutes from './community.routes';
 import { BookingController } from '../controllers/booking.controller';
 import { ManageController } from '../controllers/manage.controller';
+import { CommunityController } from '../controllers/community.controller';
 import { ChatController } from '../controllers/chat.controller';
 import { AIController, aiUploadMiddleware } from '../controllers/ai.controller';
 import { authenticate } from '../middlewares/auth.middleware';
@@ -45,6 +47,12 @@ router.use('/payouts', payoutRoutes);
 
 // Team invitation acceptance
 router.post('/team/accept', authenticate, ManageController.acceptTeamInvitation);
+
+// Community invitation acceptance (must come before /communities/:id routes)
+router.post('/communities/accept', authenticate, CommunityController.acceptInvite);
+
+// Community routes
+router.use('/communities', communityRoutes);
 
 // AI event generation (accepts text, image, PDF, DOCX)
 router.post('/ai/generate-event', authenticate, aiUploadMiddleware, AIController.generateEvent);
