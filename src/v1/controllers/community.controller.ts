@@ -47,6 +47,23 @@ export class CommunityController {
     }
 
     /**
+     * GET /communities/slug/:slug - Public community page lookup
+     */
+    static async getBySlug(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id;
+            const community = await CommunityService.getCommunityBySlug(req.params.slug, userId);
+
+            return res.status(200).json({ status: 'success', data: community });
+        } catch (error: any) {
+            return res.status(statusFromError(error)).json({
+                status: 'error',
+                message: error.message || 'Failed to fetch community',
+            });
+        }
+    }
+
+    /**
      * GET /communities/:id - Get community details
      */
     static async getOne(req: Request, res: Response) {
@@ -260,6 +277,43 @@ export class CommunityController {
             return res.status(400).json({
                 status: 'error',
                 message: error.message || 'Failed to accept invitation',
+            });
+        }
+    }
+
+    // ==================== FOLLOW ====================
+
+    /**
+     * POST /communities/:id/follow - Follow a community
+     */
+    static async follow(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const result = await CommunityService.followCommunity(userId, req.params.id);
+
+            return res.status(201).json({ status: 'success', data: result });
+        } catch (error: any) {
+            return res.status(statusFromError(error)).json({
+                status: 'error',
+                message: error.message || 'Failed to follow community',
+            });
+        }
+    }
+
+    /**
+     * DELETE /communities/:id/follow - Unfollow a community
+     */
+    static async unfollow(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const result = await CommunityService.unfollowCommunity(userId, req.params.id);
+
+            return res.status(200).json({ status: 'success', data: result });
+        } catch (error: any) {
+            const statusCode = error.message.includes('Not following') ? 404 : statusFromError(error);
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to unfollow community',
             });
         }
     }

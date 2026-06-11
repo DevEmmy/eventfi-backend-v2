@@ -102,6 +102,61 @@ export class CommunityService {
     }
 
     /**
+     * Public community page lookup by slug: community info, chapters, upcoming events
+     * across all chapters, follower count, and the viewer's follow/membership status.
+     */
+    static async getCommunityBySlug(slug: string, userId?: string) {
+        const community = await prisma.community.findUnique({
+            where: { slug },
+            include: { chapters: { select: CHAPTER_SELECT } },
+        });
+        if (!community) throw new Error('Community not found');
+
+        const [upcomingEvents, followersCount] = await Promise.all([
+            prisma.event.findMany({
+                where: {
+                    communityId: community.id,
+                    status: 'PUBLISHED',
+                    privacy: 'PUBLIC',
+                    startDate: { gte: new Date() },
+                },
+                orderBy: { startDate: 'asc' },
+                take: 24,
+                include: {
+                    tickets: { select: { price: true, currency: true } },
+                    chapter: { select: CHAPTER_SELECT },
+                },
+            }),
+            prisma.communityFollow.count({ where: { communityId: community.id } }),
+        ]);
+
+        let isFollowing = false;
+        let myRole: CommunityRole | null = null;
+        if (userId) {
+            const [follow, membership] = await Promise.all([
+                prisma.communityFollow.findUnique({ where: { userId_communityId: { userId, communityId: community.id } } }),
+                prisma.communityMember.findFirst({ where: { communityId: community.id, userId, status: 'ACTIVE' } }),
+            ]);
+            isFollowing = !!follow;
+            myRole = membership?.role ?? null;
+        }
+
+        return {
+            id: community.id,
+            name: community.name,
+            slug: community.slug,
+            description: community.description,
+            logo: community.logo,
+            bannerImage: community.bannerImage,
+            chapters: community.chapters,
+            followersCount,
+            isFollowing,
+            myRole,
+            upcomingEvents,
+        };
+    }
+
+    /**
      * List all communities the user is an active member of, with their role(s) per community.
      */
     static async listMyCommunities(userId: string) {
@@ -376,6 +431,37 @@ export class CommunityService {
         });
 
         return { message: 'Invitation accepted', communityId: member.communityId };
+    }
+
+    // ==================== FOLLOW ====================
+
+    /**
+     * Follow a community.
+     */
+    static async followCommunity(userId: string, communityId: string) {
+        const community = await prisma.community.findUnique({ where: { id: communityId }, select: { id: true } });
+        if (!community) throw new Error('Community not found');
+
+        try {
+            await prisma.communityFollow.create({ data: { userId, communityId } });
+            return { message: 'Successfully followed community' };
+        } catch (error: any) {
+            if (error.code === 'P2002') throw new Error('You are already following this community');
+            throw error;
+        }
+    }
+
+    /**
+     * Unfollow a community.
+     */
+    static async unfollowCommunity(userId: string, communityId: string) {
+        const follow = await prisma.communityFollow.findUnique({
+            where: { userId_communityId: { userId, communityId } },
+        });
+        if (!follow) throw new Error('Not following this community');
+
+        await prisma.communityFollow.delete({ where: { userId_communityId: { userId, communityId } } });
+        return { message: 'Successfully unfollowed community' };
     }
 
     // ==================== OVERVIEW & EVENTS ====================

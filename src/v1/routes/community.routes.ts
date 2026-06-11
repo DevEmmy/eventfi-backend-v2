@@ -17,10 +17,17 @@ const router = Router();
 router.get('/mine', authenticate, CommunityController.listMine);
 router.post('/', authenticate, validate(createCommunitySchema), CommunityController.create);
 
+// Public community page (must come before /:id)
+router.get('/slug/:slug', optionalAuth, CommunityController.getBySlug);
+
 // Community detail
 router.get('/:id', optionalAuth, CommunityController.getOne);
 router.patch('/:id', authenticate, validate(updateCommunitySchema), CommunityController.update);
 router.delete('/:id', authenticate, CommunityController.remove);
+
+// Follow / Unfollow
+router.post('/:id/follow', authenticate, CommunityController.follow);
+router.delete('/:id/follow', authenticate, CommunityController.unfollow);
 
 // Overview
 router.get('/:id/overview', authenticate, CommunityController.getOverview);
