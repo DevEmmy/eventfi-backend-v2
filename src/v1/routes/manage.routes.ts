@@ -16,6 +16,7 @@ router.get('/:eventId/revenue/export', authenticate, ManageController.exportReve
 router.get('/:eventId/attendees', authenticate, ManageController.getAttendees);
 router.post('/:eventId/attendees/:attendeeId/check-in', authenticate, ManageController.checkInAttendee);
 router.post('/:eventId/attendees/email', authenticate, ManageController.sendBulkEmail);
+router.post('/:eventId/attendees/sms', authenticate, ManageController.sendBulkSms);
 router.get('/:eventId/attendees/export', authenticate, ManageController.exportAttendees);
 
 // Team management

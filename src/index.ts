@@ -11,6 +11,8 @@ import { startReminderScheduler } from './v1/jobs/reminder.scheduler';
 import { connectRedis, disconnectRedis } from './v1/config/redis';
 import { emailWorker } from './v1/jobs/email.worker';
 import { emailQueue } from './v1/jobs/email.queue';
+import { smsWorker } from './v1/jobs/sms.worker';
+import { smsQueue } from './v1/jobs/sms.queue';
 
 const DEFAULT_PORT = 8000;
 
@@ -86,6 +88,7 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
           disconnectDatabase(),
           disconnectRedis(),
           emailWorker.close(),
+          smsWorker.close(),
         ]);
       } catch (shutdownError) {
         console.error('Error during shutdown', shutdownError);
@@ -106,6 +109,8 @@ const bootstrap = async () => {
     startReminderScheduler();
     console.log(`📧 Email worker active (concurrency: ${emailWorker.concurrency})`);
     console.log(`📬 Email queue ready: ${emailQueue.name}`);
+    console.log(`📱 SMS worker active (concurrency: ${smsWorker.concurrency})`);
+    console.log(`📬 SMS queue ready: ${smsQueue.name}`);
   } catch (error) {
     console.error('Failed to bootstrap services', error);
     process.exit(1);

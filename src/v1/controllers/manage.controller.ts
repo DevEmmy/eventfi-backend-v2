@@ -186,6 +186,36 @@ export class ManageController {
     }
 
     /**
+     * POST /events/:eventId/attendees/sms - Send bulk SMS
+     */
+    static async sendBulkSms(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const { eventId } = req.params;
+            const { recipients, attendeeIds, message } = req.body;
+
+            if (!message) {
+                return res.status(400).json({
+                    status: 'error',
+                    message: 'Message is required'
+                });
+            }
+
+            const data = await ManageService.sendBulkSms(eventId, userId, recipients, attendeeIds, message);
+
+            return res.status(200).json({
+                status: 'success',
+                data
+            });
+        } catch (error: any) {
+            return res.status(500).json({
+                status: 'error',
+                message: error.message || 'Failed to send bulk SMS'
+            });
+        }
+    }
+
+    /**
      * GET /events/:eventId/team - Get team members
      */
     static async getTeamMembers(req: Request, res: Response) {

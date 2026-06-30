@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { prisma } from '../config/database';
 import { NotificationService } from '../services/notification.service';
+import { smsQueue } from './sms.queue';
 
 /**
  * Returns a time window [from, to] for "target duration from now".
@@ -77,16 +78,20 @@ async function sendReminders(reminderType: ReminderType, targetMs: number) {
     if (events.length === 0) return;
 
     for (const event of events) {
-        // Get all users with confirmed bookings for this event
+        // Get all confirmed orders for this event, with attendee phones and the
+        // order owner's SMS opt-in (each attendee gets reminded on their own number)
         const orders = await prisma.bookingOrder.findMany({
             where: { eventId: event.id, status: 'CONFIRMED' },
-            select: { userId: true },
-            distinct: ['userId'],
+            select: {
+                userId: true,
+                attendees: { select: { phone: true } },
+                user: { select: { settings: { select: { notifications: true } } } },
+            },
         });
 
         if (orders.length === 0) continue;
 
-        const allUserIds = orders.map((o: any) => o.userId);
+        const allUserIds = [...new Set(orders.map((o: any) => o.userId))];
         const userIds = await filterAlreadyNotified(event.id, allUserIds, reminderType);
 
         if (userIds.length === 0) continue;
@@ -114,6 +119,28 @@ async function sendReminders(reminderType: ReminderType, targetMs: number) {
         console.log(
             `[Reminder] Sent ${reminderType} reminders for "${event.title}" to ${userIds.length} user(s)`
         );
+
+        // Collect attendee phones for orders whose owner opted into SMS
+        const notifiedUserIds = new Set(userIds);
+        const phones = new Set<string>();
+        for (const order of orders) {
+            if (!notifiedUserIds.has(order.userId)) continue;
+            const notifications = order.user?.settings?.notifications as { sms?: boolean } | undefined;
+            if (!notifications?.sms) continue;
+            for (const attendee of order.attendees) {
+                if (attendee.phone) phones.add(attendee.phone);
+            }
+        }
+
+        if (phones.size > 0) {
+            await smsQueue.add('event-reminder', {
+                type: 'event-reminder',
+                recipients: Array.from(phones),
+                message: `Reminder: ${event.title} is ${labelMap[reminderType]} on ${eventDate}${timeStr ? ` at ${timeStr}` : ''} at ${venue}. - EventFi`,
+            }).catch((err) => console.error('[Reminder] Failed to queue SMS:', err));
+
+            console.log(`[Reminder] Queued ${reminderType} SMS for "${event.title}" to ${phones.size} attendee(s)`);
+        }
     }
 }
 

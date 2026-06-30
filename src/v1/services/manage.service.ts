@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { emailQueue } from '../jobs/email.queue';
+import { smsQueue } from '../jobs/sms.queue';
 import redis from '../config/redis';
 
 const ACCESS_CACHE_TTL = 120; // 2 min — team membership rarely changes mid-session
@@ -794,6 +795,61 @@ export class ManageService {
         return {
             emailsSent: attendees.length,
             message: `Successfully sent ${attendees.length} emails`
+        };
+    }
+
+    /**
+     * Send bulk SMS to attendees
+     */
+    static async sendBulkSms(
+        eventId: string,
+        userId: string,
+        recipients: 'all' | 'checked_in' | 'not_checked_in' | 'custom',
+        attendeeIds: string[] | undefined,
+        message: string
+    ) {
+        // 1. Check access
+        await this.checkEventAccess(userId, eventId, 'canManageAttendees');
+
+        // 2. Define recipient filter
+        let where: any = { order: { eventId, status: 'CONFIRMED' } };
+
+        if (recipients === 'checked_in') where.checkedIn = true;
+        if (recipients === 'not_checked_in') where.checkedIn = false;
+        if (recipients === 'custom' && attendeeIds) {
+            where.id = { in: attendeeIds };
+        }
+
+        // 3. Fetch attendees with a phone number on file
+        const attendees = await prisma.attendee.findMany({
+            where: { ...where, phone: { not: null } },
+            select: { id: true, phone: true }
+        });
+
+        if (attendees.length === 0) {
+            return {
+                smsSent: 0,
+                message: 'No attendees with a phone number found for the selected filter'
+            };
+        }
+
+        // 4. Enqueue in chunks — Multitexter accepts comma-separated recipients per request
+        const CHUNK_SIZE = 100;
+        const phones = attendees.map(a => a.phone as string);
+        for (let i = 0; i < phones.length; i += CHUNK_SIZE) {
+            const chunk = phones.slice(i, i + CHUNK_SIZE);
+            await smsQueue.add('announcement', {
+                type: 'announcement',
+                recipients: chunk,
+                message,
+            }).catch(err => console.error('[BulkSms] Failed to queue SMS chunk:', err));
+        }
+
+        console.log(`[Bulk SMS] Event ${eventId}: Queued ${attendees.length} SMS`);
+
+        return {
+            smsSent: attendees.length,
+            message: `Successfully queued ${attendees.length} SMS`
         };
     }
 }
