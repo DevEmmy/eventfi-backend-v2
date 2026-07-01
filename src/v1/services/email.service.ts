@@ -19,6 +19,9 @@ export class EmailService {
                 port: 587,
                 secure: false,
                 auth: { user, pass },
+                pool: true,
+                maxConnections: 1,
+                maxMessages: 100,
             });
 
             console.log('[EmailService] Nodemailer SMTP transporter initialized.');
@@ -27,17 +30,16 @@ export class EmailService {
     }
 
     static async send(to: string, subject: string, html: string, text?: string) {
+        const transporter = this.getTransporter();
+        const from = process.env.EMAIL_FROM || `EventFi <${process.env.SMTP_USER}>`;
+
         try {
-            const transporter = this.getTransporter();
-            const from = process.env.EMAIL_FROM || `EventFi <${process.env.SMTP_USER}>`;
-
             const info = await transporter.sendMail({ from, to, subject, html, text: text || '' });
-
             console.log(`[EmailService] Email sent to ${to}: ${info.messageId}`);
             return info;
         } catch (error) {
             console.error('[EmailService] Error sending email:', error);
-            return null;
+            throw error;
         }
     }
 

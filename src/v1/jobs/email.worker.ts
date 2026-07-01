@@ -156,9 +156,9 @@ export const emailWorker = new Worker<EmailJobData>(
     },
     {
         connection,
-        concurrency: 5,
+        concurrency: 2,
         limiter: {
-            max: 10,
+            max: 3,
             duration: 1000,
         }
     }
