@@ -1,36 +1,75 @@
+import nodemailer from 'nodemailer';
 import { Resend } from 'resend';
 import { EmailTemplates } from '../utils/email.templates';
 
 export class EmailService {
-    private static client: Resend | null = null;
+    private static transporter: nodemailer.Transporter | null = null;
+    private static resendClient: Resend | null = null;
 
-    private static getClient(): Resend {
-        if (!this.client) {
-            const apiKey = process.env.RESEND_API_KEY;
+    private static getTransporter(): nodemailer.Transporter | null {
+        if (this.transporter) return this.transporter;
 
-            if (!apiKey) {
-                console.error('[EmailService] RESEND_API_KEY is missing in .env');
-                throw new Error('Resend API key is not configured');
-            }
+        const user = process.env.SMTP_USER;
+        const pass = process.env.SMTP_PASS;
+        if (!user || !pass) return null;
 
-            this.client = new Resend(apiKey);
-            console.log('[EmailService] Resend client initialized.');
-        }
-        return this.client;
+        this.transporter = nodemailer.createTransport({
+            host: 'smtp.gmail.com',
+            port: 587,
+            secure: false,
+            auth: { user, pass },
+            // Reuse one authenticated connection instead of re-logging in per email —
+            // that repeated AUTH is what tripped Gmail's "too many login attempts" block.
+            pool: true,
+            maxConnections: 1,
+            maxMessages: 100,
+        });
+        return this.transporter;
     }
 
-    static async send(to: string, subject: string, html: string, text?: string) {
-        const client = this.getClient();
-        const from = process.env.EMAIL_FROM || 'EventFi <onboarding@resend.dev>';
+    private static getResendClient(): Resend | null {
+        if (this.resendClient) return this.resendClient;
 
-        const { data, error } = await client.emails.send({ from, to, subject, html, text: text || '' });
+        const apiKey = process.env.RESEND_API_KEY;
+        if (!apiKey) return null;
+
+        this.resendClient = new Resend(apiKey);
+        return this.resendClient;
+    }
+
+    /**
+     * Gmail SMTP is primary (free, generous daily volume) but prone to transient
+     * auth-rate-limit blocks. Resend is the paid fallback — only hit when Gmail
+     * actually fails, so the free-tier Resend quota is reserved for overflow.
+     */
+    static async send(to: string, subject: string, html: string, text?: string) {
+        const transporter = this.getTransporter();
+        const smtpFrom = process.env.EMAIL_FROM || (process.env.SMTP_USER ? `EventFi <${process.env.SMTP_USER}>` : undefined);
+
+        if (transporter && smtpFrom) {
+            try {
+                const info = await transporter.sendMail({ from: smtpFrom, to, subject, html, text: text || '' });
+                console.log(`[EmailService] Email sent via SMTP to ${to}: ${info.messageId}`);
+                return info;
+            } catch (error) {
+                console.error('[EmailService] SMTP send failed, falling back to Resend:', error);
+            }
+        }
+
+        const client = this.getResendClient();
+        if (!client) {
+            throw new Error('Email delivery failed: SMTP unavailable and RESEND_API_KEY is not configured');
+        }
+
+        const resendFrom = process.env.RESEND_FROM || process.env.EMAIL_FROM || 'EventFi <onboarding@resend.dev>';
+        const { data, error } = await client.emails.send({ from: resendFrom, to, subject, html, text: text || '' });
 
         if (error) {
-            console.error('[EmailService] Error sending email:', error);
+            console.error('[EmailService] Resend fallback also failed:', error);
             throw new Error(error.message);
         }
 
-        console.log(`[EmailService] Email sent to ${to}: ${data?.id}`);
+        console.log(`[EmailService] Email sent via Resend fallback to ${to}: ${data?.id}`);
         return data;
     }
 
