@@ -535,7 +535,7 @@ export class EventService {
                 scheduleItems: { orderBy: { order: 'asc' } },
                 speakers: { orderBy: { order: 'asc' } },
                 organizer: {
-                    select: { id: true, displayName: true, avatar: true }
+                    select: { id: true, displayName: true, avatar: true, username: true }
                 }
             }
         });
@@ -564,6 +564,10 @@ export class EventService {
                         venueName: data.location?.venueName,
                         address: data.location?.address,
                         eventUrl,
+                        eventImageUrl: updatedEvent.coverImage,
+                        organizerName: updatedEvent.organizer?.displayName ?? undefined,
+                        organizerAvatarUrl: updatedEvent.organizer?.avatar ?? undefined,
+                        organizerProfileUrl: updatedEvent.organizer?.username ? `https://eventfi.live/profile/${updatedEvent.organizer.username}` : undefined,
                     }).catch(() => {/* silently fail per-email */});
                 }
             }

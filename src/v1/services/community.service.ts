@@ -323,6 +323,7 @@ export class CommunityService {
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
         const roleLabel = data.role.toLowerCase().replace('_', ' ');
+        const communityImageUrl = community.bannerImage || community.logo || undefined;
 
         if (!targetUser && inviteToken) {
             const inviteUrl = `${frontendUrl}/communities/accept?token=${inviteToken}`;
@@ -331,6 +332,7 @@ export class CommunityService {
                 role: roleLabel,
                 chapterName: chapter?.name,
                 inviteUrl,
+                communityImageUrl,
             });
             EmailService.send(email, template.subject, template.html, template.text).catch((err) =>
                 console.error('Failed to send community invitation email:', err)
@@ -342,6 +344,7 @@ export class CommunityService {
                 role: roleLabel,
                 chapterName: chapter?.name,
                 communityUrl,
+                communityImageUrl,
             });
             EmailService.send(targetUser.email, template.subject, template.html, template.text).catch((err) =>
                 console.error('Failed to send community member added email:', err)

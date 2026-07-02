@@ -59,6 +59,11 @@ export const emailWorker = new Worker<EmailJobData>(
                         qrCodeUrl: data.qrCodeUrl,
                         startDate: data.startDate,
                         venue: data.venue,
+                        eventImageUrl: data.eventImageUrl,
+                        eventUrl: data.eventUrl,
+                        organizerName: data.organizerName,
+                        organizerAvatarUrl: data.organizerAvatarUrl,
+                        organizerProfileUrl: data.organizerProfileUrl,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -70,6 +75,10 @@ export const emailWorker = new Worker<EmailJobData>(
                         subject: data.subject,
                         content: data.content,
                         organizerName: data.organizerName,
+                        eventImageUrl: data.eventImageUrl,
+                        eventUrl: data.eventUrl,
+                        organizerAvatarUrl: data.organizerAvatarUrl,
+                        organizerProfileUrl: data.organizerProfileUrl,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -80,6 +89,8 @@ export const emailWorker = new Worker<EmailJobData>(
                         eventTitle: data.eventTitle,
                         role: data.role,
                         inviteUrl: data.inviteUrl,
+                        eventImageUrl: data.eventImageUrl,
+                        eventUrl: data.eventUrl,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -91,6 +102,7 @@ export const emailWorker = new Worker<EmailJobData>(
                         eventDate: data.eventDate,
                         reason: data.reason,
                         refundPolicy: data.refundPolicy,
+                        eventImageUrl: data.eventImageUrl,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;

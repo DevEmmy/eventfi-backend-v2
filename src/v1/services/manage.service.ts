@@ -714,6 +714,7 @@ export class ManageService {
                     eventDate,
                     reason,
                     refundPolicy,
+                    eventImageUrl: event.coverImage,
                 }).catch(err => console.error('Failed to queue cancellation email:', err));
             }
             attendeesNotified = attendeeEmails.size;
@@ -744,7 +745,7 @@ export class ManageService {
         const event = await prisma.event.findUnique({
             where: { id: eventId },
             include: {
-                organizer: { select: { displayName: true, email: true } }
+                organizer: { select: { displayName: true, email: true, username: true, avatar: true } }
             }
         });
 
@@ -773,6 +774,7 @@ export class ManageService {
         }
 
         // 5. Enqueue announcement jobs in batches of 10 to stay within BullMQ rate limit
+        const eventUrl = event.slug ? `https://eventfi.live/${event.slug}` : undefined;
         const CHUNK_SIZE = 10;
         for (let i = 0; i < attendees.length; i += CHUNK_SIZE) {
             const chunk = attendees.slice(i, i + CHUNK_SIZE);
@@ -785,6 +787,10 @@ export class ManageService {
                         subject,
                         content: body,
                         organizerName: event.organizer.displayName || 'Event Organizer',
+                        eventImageUrl: event.coverImage,
+                        eventUrl,
+                        organizerAvatarUrl: event.organizer.avatar,
+                        organizerProfileUrl: event.organizer.username ? `https://eventfi.live/profile/${event.organizer.username}` : undefined,
                     }).catch(err => console.error(`[BulkEmail] Failed to queue for ${attendee.email}:`, err))
                 )
             );

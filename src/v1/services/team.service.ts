@@ -133,6 +133,8 @@ export class TeamService {
             include: { user: { select: { id: true, displayName: true, email: true, avatar: true } } }
         });
 
+        const publicEventUrl = event?.slug ? `https://eventfi.live/${event.slug}` : undefined;
+
         if (!targetUser && inviteToken) {
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
             const inviteUrl = `${frontendUrl}/team/accept?token=${inviteToken}`;
@@ -140,6 +142,8 @@ export class TeamService {
                 eventTitle: event?.title || 'Event',
                 role: role.replace('_', ' ').toLowerCase(),
                 inviteUrl,
+                eventImageUrl: event?.coverImage,
+                eventUrl: publicEventUrl,
             });
             EmailService.send(email, template.subject, template.html, template.text).catch(err =>
                 console.error('Failed to send team invitation email:', err)
@@ -152,6 +156,7 @@ export class TeamService {
                 eventTitle: event?.title || 'Event',
                 role: role.replace('_', ' ').toLowerCase(),
                 eventUrl,
+                eventImageUrl: event?.coverImage,
             });
             EmailService.send(targetUser.email, template.subject, template.html, template.text).catch(err =>
                 console.error('Failed to send team added email:', err)

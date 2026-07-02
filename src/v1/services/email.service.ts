@@ -44,17 +44,17 @@ export class EmailService {
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    static async sendTicketConfirmation(to: string, data: { eventTitle: string, userTitle: string, qrCodeUrl?: string, startDate: string, venue: string }) {
+    static async sendTicketConfirmation(to: string, data: Parameters<typeof EmailTemplates.ticketConfirmation>[0]) {
         const template = EmailTemplates.ticketConfirmation(data);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    static async sendAnnouncement(to: string, data: { eventTitle: string, subject: string, content: string, organizerName: string }) {
+    static async sendAnnouncement(to: string, data: Parameters<typeof EmailTemplates.announcement>[0]) {
         const template = EmailTemplates.announcement(data);
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    static async sendLocationAnnounced(to: string, data: { eventTitle: string, eventDate: string, venueName?: string, address?: string, eventUrl: string }) {
+    static async sendLocationAnnounced(to: string, data: Parameters<typeof EmailTemplates.locationAnnounced>[0]) {
         const template = EmailTemplates.locationAnnounced(data);
         return this.send(to, template.subject, template.html, template.text);
     }

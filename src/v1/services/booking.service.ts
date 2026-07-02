@@ -466,13 +466,17 @@ export class BookingService {
         try {
             const event = await prisma.event.findUnique({
                 where: { id: order.eventId },
-                select: { title: true, startDate: true, venueName: true, address: true, city: true }
+                select: {
+                    title: true, slug: true, startDate: true, venueName: true, address: true, city: true, coverImage: true,
+                    organizer: { select: { displayName: true, username: true, avatar: true } },
+                }
             });
             if (event) {
                 const eventDate = new Date(event.startDate).toLocaleDateString('en-US', {
                     weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
                 });
                 const venue = event.venueName || event.address || event.city || 'TBA';
+                const eventUrl = event.slug ? `https://eventfi.live/${event.slug}` : undefined;
 
                 for (const ticket of tickets) {
                     if (ticket.email) {
@@ -483,6 +487,11 @@ export class BookingService {
                             userTitle: ticket.name || 'Attendee',
                             startDate: eventDate,
                             venue,
+                            eventImageUrl: event.coverImage,
+                            eventUrl,
+                            organizerName: event.organizer?.displayName,
+                            organizerAvatarUrl: event.organizer?.avatar,
+                            organizerProfileUrl: event.organizer?.username ? `https://eventfi.live/profile/${event.organizer.username}` : undefined,
                         }).catch(err => console.error('Failed to queue ticket confirmation email:', err));
                     }
                 }
