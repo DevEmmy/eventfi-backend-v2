@@ -7,8 +7,7 @@ const BRAND_COLOR = '#6366f1';
 const WEBSITE_URL = 'https://eventfi.live';
 const SOCIAL_LINKS = {
     x: 'https://x.com/theEventfi',
-    instagram: 'https://instagram.com/eventfi',
-    linkedin: 'https://linkedin.com/company/eventfi',
+    instagram: 'https://instagram.com/the_eventfi',
 };
 
 interface LayoutOptions {
@@ -30,12 +29,28 @@ function socialIcon(href: string, letter: string) {
     return `<a href="${href}" style="display:inline-block; width:30px; height:30px; line-height:30px; text-align:center; border-radius:50%; background-color:#f1f1f4; color:#666; font-size:12px; font-weight:700; text-decoration:none; margin:0 4px; font-family:sans-serif;">${letter}</a>`;
 }
 
+/**
+ * Most email clients (Gmail, Outlook, Yahoo) refuse to render SVG images for
+ * security reasons, so they show up as broken. Dicebear (our default seeded
+ * avatar) serves SVG by default — swap it for their PNG raster endpoint.
+ */
+function toEmailSafeImageUrl(url?: string): string | undefined {
+    if (!url) return url;
+    if (url.includes('api.dicebear.com') && url.includes('/svg')) {
+        return url.replace('/svg', '/png');
+    }
+    if (/\.svg(\?|$)/i.test(url)) return undefined;
+    return url;
+}
+
 function renderLayout(opts: LayoutOptions): string {
     const {
         heading, bodyHtml, ctaLabel, ctaUrl,
-        contextTitle, contextMeta, contextImageUrl, contextUrl,
-        hostName, hostAvatarUrl, hostProfileUrl, footerNote,
+        contextTitle, contextMeta, contextUrl,
+        hostName, hostProfileUrl, footerNote,
     } = opts;
+    const contextImageUrl = toEmailSafeImageUrl(opts.contextImageUrl);
+    const hostAvatarUrl = toEmailSafeImageUrl(opts.hostAvatarUrl);
 
     const contextHeader = contextTitle ? `
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:16px;">
@@ -103,7 +118,6 @@ function renderLayout(opts: LayoutOptions): string {
             <div style="margin-bottom:16px;">
                 ${socialIcon(SOCIAL_LINKS.x, 'X')}
                 ${socialIcon(SOCIAL_LINKS.instagram, 'IG')}
-                ${socialIcon(SOCIAL_LINKS.linkedin, 'in')}
             </div>
             <p style="font-size:11px; color:#bbb; margin:0;">EventFi &middot; <a href="${WEBSITE_URL}" style="color:#bbb;">eventfi.live</a></p>
         </div>
