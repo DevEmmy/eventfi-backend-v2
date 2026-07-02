@@ -805,19 +805,42 @@ export class ManageService {
     }
 
     /**
-     * Send bulk SMS to attendees
+     * Send bulk SMS to attendees.
+     * messageType 'reminder'  — auto-generates event reminder text (≤ 120 chars).
+     * messageType 'custom'    — uses caller-supplied message, max 120 chars.
      */
     static async sendBulkSms(
         eventId: string,
         userId: string,
         recipients: 'all' | 'checked_in' | 'not_checked_in' | 'custom',
         attendeeIds: string[] | undefined,
-        message: string
+        messageType: 'reminder' | 'custom',
+        customMessage?: string
     ) {
+        const MAX_CHARS = 120;
+
         // 1. Check access
         await this.checkEventAccess(userId, eventId, 'canManageAttendees');
 
-        // 2. Define recipient filter
+        // 2. Resolve message text
+        let smsText: string;
+
+        if (messageType === 'reminder') {
+            const event = await prisma.event.findUnique({
+                where: { id: eventId },
+                select: { title: true, startDate: true, startTime: true, venueName: true, city: true },
+            });
+            if (!event) throw new Error('Event not found');
+            smsText = buildReminderSms(event);
+        } else {
+            if (!customMessage) throw new Error('Message is required for custom SMS');
+            if (customMessage.length > MAX_CHARS) {
+                throw new Error(`Message must not exceed ${MAX_CHARS} characters (currently ${customMessage.length})`);
+            }
+            smsText = customMessage;
+        }
+
+        // 3. Define recipient filter
         let where: any = { order: { eventId, status: 'CONFIRMED' } };
 
         if (recipients === 'checked_in') where.checkedIn = true;
@@ -826,20 +849,20 @@ export class ManageService {
             where.id = { in: attendeeIds };
         }
 
-        // 3. Fetch attendees with a phone number on file
+        // 4. Fetch attendees with a phone number on file
         const attendees = await prisma.attendee.findMany({
             where: { ...where, phone: { not: null } },
-            select: { id: true, phone: true }
+            select: { id: true, phone: true },
         });
 
         if (attendees.length === 0) {
             return {
                 smsSent: 0,
-                message: 'No attendees with a phone number found for the selected filter'
+                message: 'No attendees with a phone number found for the selected filter',
             };
         }
 
-        // 4. Enqueue in chunks — Multitexter accepts comma-separated recipients per request
+        // 5. Enqueue in chunks — Multitexter accepts comma-separated recipients per request
         const CHUNK_SIZE = 100;
         const phones = attendees.map(a => a.phone as string);
         for (let i = 0; i < phones.length; i += CHUNK_SIZE) {
@@ -847,15 +870,48 @@ export class ManageService {
             await smsQueue.add('announcement', {
                 type: 'announcement',
                 recipients: chunk,
-                message,
+                message: smsText,
             }).catch(err => console.error('[BulkSms] Failed to queue SMS chunk:', err));
         }
 
-        console.log(`[Bulk SMS] Event ${eventId}: Queued ${attendees.length} SMS`);
+        console.log(`[Bulk SMS] Event ${eventId}: Queued ${attendees.length} SMS (type: ${messageType})`);
 
         return {
             smsSent: attendees.length,
-            message: `Successfully queued ${attendees.length} SMS`
+            messagePreview: smsText,
+            message: `Successfully queued ${attendees.length} SMS`,
         };
     }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildReminderSms(event: {
+    title: string;
+    startDate: Date;
+    startTime: string | null;
+    venueName: string | null;
+    city: string | null;
+}): string {
+    const MAX = 120;
+    const date = new Date(event.startDate).toLocaleDateString('en-NG', {
+        weekday: 'short', month: 'short', day: 'numeric',
+    });
+    const timeStr = event.startTime ? ` at ${event.startTime}` : '';
+    const venue = event.venueName || event.city || '';
+    const venueStr = venue ? ` @ ${venue}` : '';
+
+    // Build around a fixed suffix so we know exactly how many chars title has
+    const prefix = 'Reminder: ';
+    const suffix = ` is on ${date}${timeStr}${venueStr}. - EventFi`;
+    const overhead = prefix.length + suffix.length;
+
+    let title = event.title;
+    if (overhead + title.length > MAX) {
+        title = title.slice(0, MAX - overhead - 3) + '...';
+    }
+
+    return `${prefix}${title}${suffix}`;
 }

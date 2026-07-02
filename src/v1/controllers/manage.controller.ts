@@ -192,16 +192,31 @@ export class ManageController {
         try {
             const userId = (req as any).user.id;
             const { eventId } = req.params;
-            const { recipients, attendeeIds, message } = req.body;
+            const { recipients, attendeeIds, messageType, message } = req.body;
 
-            if (!message) {
+            if (messageType !== 'reminder' && messageType !== 'custom') {
                 return res.status(400).json({
                     status: 'error',
-                    message: 'Message is required'
+                    message: 'messageType must be "reminder" or "custom"'
                 });
             }
 
-            const data = await ManageService.sendBulkSms(eventId, userId, recipients, attendeeIds, message);
+            if (messageType === 'custom') {
+                if (!message) {
+                    return res.status(400).json({
+                        status: 'error',
+                        message: 'Message is required for custom SMS'
+                    });
+                }
+                if (message.length > 120) {
+                    return res.status(400).json({
+                        status: 'error',
+                        message: `Message must not exceed 120 characters (currently ${message.length})`
+                    });
+                }
+            }
+
+            const data = await ManageService.sendBulkSms(eventId, userId, recipients, attendeeIds, messageType, message);
 
             return res.status(200).json({
                 status: 'success',
