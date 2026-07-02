@@ -1,46 +1,37 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 import { EmailTemplates } from '../utils/email.templates';
 
 export class EmailService {
-    private static transporter: nodemailer.Transporter | null = null;
+    private static client: Resend | null = null;
 
-    private static getTransporter(): nodemailer.Transporter {
-        if (!this.transporter) {
-            const user = process.env.SMTP_USER;
-            const pass = process.env.SMTP_PASS;
+    private static getClient(): Resend {
+        if (!this.client) {
+            const apiKey = process.env.RESEND_API_KEY;
 
-            if (!user || !pass) {
-                console.error('[EmailService] SMTP_USER or SMTP_PASS is missing in .env');
-                throw new Error('SMTP credentials are not configured');
+            if (!apiKey) {
+                console.error('[EmailService] RESEND_API_KEY is missing in .env');
+                throw new Error('Resend API key is not configured');
             }
 
-            this.transporter = nodemailer.createTransport({
-                host: 'smtp.gmail.com',
-                port: 587,
-                secure: false,
-                auth: { user, pass },
-                pool: true,
-                maxConnections: 1,
-                maxMessages: 100,
-            });
-
-            console.log('[EmailService] Nodemailer SMTP transporter initialized.');
+            this.client = new Resend(apiKey);
+            console.log('[EmailService] Resend client initialized.');
         }
-        return this.transporter;
+        return this.client;
     }
 
     static async send(to: string, subject: string, html: string, text?: string) {
-        const transporter = this.getTransporter();
-        const from = process.env.EMAIL_FROM || `EventFi <${process.env.SMTP_USER}>`;
+        const client = this.getClient();
+        const from = process.env.EMAIL_FROM || 'EventFi <onboarding@resend.dev>';
 
-        try {
-            const info = await transporter.sendMail({ from, to, subject, html, text: text || '' });
-            console.log(`[EmailService] Email sent to ${to}: ${info.messageId}`);
-            return info;
-        } catch (error) {
+        const { data, error } = await client.emails.send({ from, to, subject, html, text: text || '' });
+
+        if (error) {
             console.error('[EmailService] Error sending email:', error);
-            throw error;
+            throw new Error(error.message);
         }
+
+        console.log(`[EmailService] Email sent to ${to}: ${data?.id}`);
+        return data;
     }
 
     static async sendWelcomeEmail(to: string, name: string) {
