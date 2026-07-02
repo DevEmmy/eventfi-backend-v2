@@ -54,4 +54,16 @@ export class CommunityAccessService {
 
         return { role, chapterIds };
     }
+
+    /**
+     * Verify a user is either an active staff member or a follower of the community.
+     * Used to gate participation (posting/commenting/liking) in community discussions.
+     */
+    static async requireParticipant(userId: string, communityId: string): Promise<void> {
+        const [member, follow] = await Promise.all([
+            prisma.communityMember.findFirst({ where: { communityId, userId, status: 'ACTIVE' } }),
+            prisma.communityFollow.findUnique({ where: { userId_communityId: { userId, communityId } } }),
+        ]);
+        if (!member && !follow) throw new Error('Forbidden');
+    }
 }

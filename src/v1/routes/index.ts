@@ -12,6 +12,7 @@ import vendorRoutes from './vendor.routes';
 import adminRoutes from './admin.routes';
 import payoutRoutes from './payout.routes';
 import communityRoutes from './community.routes';
+import communityPostRoutes from './communityPost.routes';
 import { BookingController } from '../controllers/booking.controller';
 import { ManageController } from '../controllers/manage.controller';
 import { CommunityController } from '../controllers/community.controller';
@@ -53,6 +54,7 @@ router.post('/communities/accept', authenticate, CommunityController.acceptInvit
 
 // Community routes
 router.use('/communities', communityRoutes);
+router.use('/communities', communityPostRoutes);
 
 // AI event generation (accepts text, image, PDF, DOCX)
 router.post('/ai/generate-event', authenticate, aiUploadMiddleware, AIController.generateEvent);

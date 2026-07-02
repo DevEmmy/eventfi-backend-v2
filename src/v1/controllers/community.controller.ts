@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import { CommunityService } from '../services/community.service';
 
-function statusFromError(error: any): number {
+export function statusFromError(error: any): number {
     const message: string = error.message || '';
     if (message === 'Forbidden') return 403;
     if (message.includes('not found')) return 404;

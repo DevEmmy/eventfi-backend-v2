@@ -59,6 +59,10 @@ model User {
   ownedCommunities     Community[]       @relation("OwnedCommunities")
   communityMemberships CommunityMember[]
   communityFollows     CommunityFollow[]
+
+  communityPostsAuthored        CommunityPost[]        @relation("CommunityPostsAuthored")
+  communityPostCommentsAuthored CommunityPostComment[]  @relation("CommunityPostCommentsAuthored")
+  communityPostLikes            CommunityPostLike[]
 }
 
 // ============ NOTIFICATIONS ============
@@ -78,6 +82,7 @@ enum NotificationType {
   MESSAGE
   SYSTEM
   COMMUNITY_INVITE
+  COMMUNITY_POST_COMMENT
 }
 
 model Notification {
@@ -775,6 +780,7 @@ model Community {
   members   CommunityMember[]
   events    Event[]
   followers CommunityFollow[]
+  posts     CommunityPost[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -827,4 +833,47 @@ model CommunityFollow {
   createdAt   DateTime  @default(now())
 
   @@unique([userId, communityId])
+}
+
+model CommunityPost {
+  id          String    @id @default(uuid()) @db.Uuid
+  communityId String    @db.Uuid
+  community   Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  authorId    String    @db.Uuid
+  author      User      @relation("CommunityPostsAuthored", fields: [authorId], references: [id])
+  content     String
+  images      String[]
+
+  comments CommunityPostComment[]
+  likes    CommunityPostLike[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([communityId, createdAt])
+}
+
+model CommunityPostComment {
+  id       String        @id @default(uuid()) @db.Uuid
+  postId   String        @db.Uuid
+  post     CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId String        @db.Uuid
+  author   User          @relation("CommunityPostCommentsAuthored", fields: [authorId], references: [id])
+  content  String
+
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+}
+
+model CommunityPostLike {
+  id     String        @id @default(uuid()) @db.Uuid
+  postId String        @db.Uuid
+  post   CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String        @db.Uuid
+  user   User          @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+
+  @@unique([postId, userId])
 }
