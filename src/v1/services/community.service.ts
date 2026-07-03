@@ -157,6 +157,69 @@ export class CommunityService {
     }
 
     /**
+     * Public directory of communities: searchable, sortable, paginated. Only PUBLIC communities.
+     */
+    static async listPublic(params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        sort?: 'followers' | 'events' | 'newest';
+    }) {
+        const page = params.page || 1;
+        const limit = params.limit || 12;
+
+        const where: any = { visibility: 'PUBLIC' };
+        if (params.search) {
+            where.OR = [
+                { name: { contains: params.search, mode: 'insensitive' } },
+                { description: { contains: params.search, mode: 'insensitive' } },
+            ];
+        }
+
+        const orderBy =
+            params.sort === 'events'
+                ? { events: { _count: 'desc' as const } }
+                : params.sort === 'newest'
+                ? { createdAt: 'desc' as const }
+                : { followers: { _count: 'desc' as const } };
+
+        const [communities, total] = await Promise.all([
+            prisma.community.findMany({
+                where,
+                orderBy,
+                skip: (page - 1) * limit,
+                take: limit,
+                select: {
+                    id: true,
+                    name: true,
+                    slug: true,
+                    description: true,
+                    logo: true,
+                    bannerImage: true,
+                    _count: { select: { followers: true, events: true } },
+                },
+            }),
+            prisma.community.count({ where }),
+        ]);
+
+        return {
+            communities: communities.map((c) => ({
+                id: c.id,
+                name: c.name,
+                slug: c.slug,
+                description: c.description,
+                logo: c.logo,
+                bannerImage: c.bannerImage,
+                followersCount: c._count.followers,
+                eventsCount: c._count.events,
+            })),
+            total,
+            page,
+            totalPages: Math.ceil(total / limit) || 1,
+        };
+    }
+
+    /**
      * List all communities the user is an active member of, with their role(s) per community.
      */
     static async listMyCommunities(userId: string) {

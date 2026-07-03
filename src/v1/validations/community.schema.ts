@@ -5,6 +5,7 @@ export const createCommunitySchema = z.object({
     description: z.string().max(2000).optional(),
     logo: z.string().optional(),
     bannerImage: z.string().optional(),
+    visibility: z.enum(['PUBLIC', 'PRIVATE']).optional(),
 });
 
 export const updateCommunitySchema = createCommunitySchema.partial();

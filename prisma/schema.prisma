@@ -765,13 +765,19 @@ enum CommunityMemberStatus {
   ACTIVE
 }
 
+enum CommunityVisibility {
+  PUBLIC
+  PRIVATE
+}
+
 model Community {
-  id          String  @id @default(uuid()) @db.Uuid
+  id          String              @id @default(uuid()) @db.Uuid
   name        String
-  slug        String  @unique
+  slug        String              @unique
   description String?
   logo        String?
   bannerImage String?
+  visibility  CommunityVisibility @default(PUBLIC)
 
   ownerId String @db.Uuid
   owner   User   @relation("OwnedCommunities", fields: [ownerId], references: [id])

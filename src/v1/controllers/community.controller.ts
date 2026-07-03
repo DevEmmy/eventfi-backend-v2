@@ -30,6 +30,28 @@ export class CommunityController {
     }
 
     /**
+     * GET /communities - Public directory of communities (searchable, sortable, paginated)
+     */
+    static async listPublic(req: Request, res: Response) {
+        try {
+            const params = {
+                page: parseInt(req.query.page as string) || 1,
+                limit: parseInt(req.query.limit as string) || 12,
+                search: (req.query.search as string) || undefined,
+                sort: (req.query.sort as 'followers' | 'events' | 'newest') || undefined,
+            };
+            const result = await CommunityService.listPublic(params);
+
+            return res.status(200).json({ status: 'success', data: result });
+        } catch (error: any) {
+            return res.status(statusFromError(error)).json({
+                status: 'error',
+                message: error.message || 'Failed to fetch communities',
+            });
+        }
+    }
+
+    /**
      * GET /communities/mine - List communities the current user belongs to
      */
     static async listMine(req: Request, res: Response) {

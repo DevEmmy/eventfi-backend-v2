@@ -13,6 +13,9 @@ import {
 
 const router = Router();
 
+// Public directory (must come before /:id)
+router.get('/', CommunityController.listPublic);
+
 // Authenticated, non-parameterized routes (must come before /:id)
 router.get('/mine', authenticate, CommunityController.listMine);
 router.post('/', authenticate, validate(createCommunitySchema), CommunityController.create);
