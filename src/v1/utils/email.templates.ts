@@ -406,6 +406,63 @@ export const EmailTemplates = {
         text: `Hi ${data.name}, ${data.currency} ${data.netAmount.toLocaleString()} has been transferred to your bank. Reference: ${data.paymentReference}. Keep this for your records.`
     }),
 
+    // ─── Installment payment emails ────────────────────────────────────────────
+
+    installmentReminder: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; dueDate: string; payUrl: string }) => ({
+        subject: `Payment reminder: installment ${data.sequence}/${data.installmentCount} due for ${data.eventTitle}`,
+        html: renderLayout({
+            heading: 'Installment payment due soon',
+            bodyHtml: `
+                <p>Hi there,</p>
+                <p>Your next installment for <strong>${data.eventTitle}</strong> is coming up.</p>
+                <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+                    <tr><td style="padding:8px; color:#666;">Installment</td><td style="padding:8px; font-weight:bold;">${data.sequence} of ${data.installmentCount}</td></tr>
+                    <tr style="background-color:#f9f9f9"><td style="padding:8px; color:#666;">Amount due</td><td style="padding:8px; font-weight:bold;">${data.currency} ${data.amount.toLocaleString()}</td></tr>
+                    <tr><td style="padding:8px; color:#666;">Due date</td><td style="padding:8px;">${data.dueDate}</td></tr>
+                </table>
+                <p>Pay before the due date to keep your tickets reserved.</p>
+                <p>The EventFi Team</p>
+            `,
+            ctaLabel: 'Pay now',
+            ctaUrl: data.payUrl,
+        }),
+        text: `Installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is due ${data.dueDate}: ${data.currency} ${data.amount.toLocaleString()}. Pay at: ${data.payUrl}`
+    }),
+
+    installmentOverdue: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; graceDays: number; payUrl: string }) => ({
+        subject: `Overdue: installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle}`,
+        html: renderLayout({
+            heading: 'Installment payment overdue',
+            bodyHtml: `
+                <p>Hi there,</p>
+                <p>Installment <strong>${data.sequence} of ${data.installmentCount}</strong> for <strong>${data.eventTitle}</strong> is now overdue.</p>
+                <table style="width:100%; border-collapse:collapse; margin:16px 0;">
+                    <tr><td style="padding:8px; color:#666;">Amount due</td><td style="padding:8px; font-weight:bold;">${data.currency} ${data.amount.toLocaleString()}</td></tr>
+                </table>
+                <p>You have <strong>${data.graceDays} day${data.graceDays > 1 ? 's' : ''}</strong> left to pay before your order is cancelled and your tickets are released.</p>
+                <p>The EventFi Team</p>
+            `,
+            ctaLabel: 'Pay now',
+            ctaUrl: data.payUrl,
+        }),
+        text: `Installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is overdue: ${data.currency} ${data.amount.toLocaleString()}. You have ${data.graceDays} day(s) left before cancellation. Pay at: ${data.payUrl}`
+    }),
+
+    installmentDefaulted: (data: { eventTitle: string }) => ({
+        subject: `Your installment plan for ${data.eventTitle} was cancelled`,
+        html: renderLayout({
+            heading: 'Installment plan cancelled',
+            bodyHtml: `
+                <p>Hi there,</p>
+                <p>Your installment plan for <strong>${data.eventTitle}</strong> has been cancelled after a missed payment past the grace period.</p>
+                <p>Your reserved tickets have been released back to the event. Amounts already paid are non-refundable.</p>
+                <p>If you'd still like to attend, you can book again from the event page.</p>
+                <p>The EventFi Team</p>
+            `,
+        }),
+        text: `Your installment plan for ${data.eventTitle} was cancelled after a missed payment. Reserved tickets have been released. Amounts already paid are non-refundable.`
+    }),
+
     // ─── Community emails ──────────────────────────────────────────────────────
 
     /**

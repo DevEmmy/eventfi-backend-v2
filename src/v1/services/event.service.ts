@@ -62,6 +62,8 @@ export interface CreateEventInput {
         maxPerUser?: number;
         salesStart?: string;
         salesEnd?: string;
+        allowInstallments?: boolean;
+        maxInstallments?: number;
     }[];
     scheduleItems?: {
         time: string;
@@ -176,6 +178,8 @@ export class EventService {
                     maxPerUser: ticket.maxPerUser,
                     salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
                     salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
+                    allowInstallments: ticket.allowInstallments || false,
+                    maxInstallments: ticket.maxInstallments,
                 }))
             },
             ...(data.scheduleItems && data.scheduleItems.length > 0 && {
@@ -497,6 +501,8 @@ export class EventService {
                                 maxPerUser: ticket.maxPerUser || null,
                                 salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
                                 salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
+                                allowInstallments: ticket.allowInstallments || false,
+                                maxInstallments: ticket.maxInstallments || null,
                             },
                         });
                     } else {
@@ -515,6 +521,8 @@ export class EventService {
                                 maxPerUser: ticket.maxPerUser || null,
                                 salesStart: ticket.salesStart ? new Date(ticket.salesStart) : null,
                                 salesEnd: ticket.salesEnd ? new Date(ticket.salesEnd) : null,
+                                allowInstallments: ticket.allowInstallments || false,
+                                maxInstallments: ticket.maxInstallments || null,
                             },
                         });
                     }

@@ -8,6 +8,7 @@ import {
 } from './v1/config/database';
 import { initializeChatSocket } from './v1/websocket/chat.socket';
 import { startReminderScheduler } from './v1/jobs/reminder.scheduler';
+import { startInstallmentScheduler } from './v1/jobs/installment.scheduler';
 import { connectRedis, disconnectRedis } from './v1/config/redis';
 import { emailWorker } from './v1/jobs/email.worker';
 import { emailQueue } from './v1/jobs/email.queue';
@@ -107,6 +108,7 @@ const bootstrap = async () => {
     await connectRedis(); // non-fatal — warns and continues if Redis is unavailable
     server.listen(port);
     startReminderScheduler();
+    startInstallmentScheduler();
     console.log(`📧 Email worker active (concurrency: ${emailWorker.concurrency})`);
     console.log(`📬 Email queue ready: ${emailQueue.name}`);
     console.log(`📱 SMS worker active (concurrency: ${smsWorker.concurrency})`);

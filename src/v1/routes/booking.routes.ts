@@ -7,6 +7,7 @@ import {
     updateAttendeesSchema,
     applyPromoSchema,
     initializePaymentSchema,
+    payInstallmentSchema,
     confirmOrderSchema,
 } from '../validations/booking.schema';
 
@@ -22,5 +23,9 @@ router.delete('/:orderId', optionalAuth, BookingController.cancelOrder);
 // Payment endpoints
 router.post('/:orderId/pay', optionalAuth, validate(initializePaymentSchema), BookingController.initializePayment);
 router.post('/:orderId/confirm', optionalAuth, validate(confirmOrderSchema), BookingController.confirmOrder);
+
+// Installment payment endpoints
+router.get('/:orderId/installments', optionalAuth, BookingController.getInstallments);
+router.post('/:orderId/installments/:installmentId/pay', optionalAuth, validate(payInstallmentSchema), BookingController.payInstallment);
 
 export default router;

@@ -26,7 +26,7 @@ function buildConnection() {
 const connection = buildConnection();
 
 interface EmailJobData {
-    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification' | 'payout-requested' | 'payout-approved' | 'payout-rejected' | 'payout-completed';
+    type: 'welcome' | 'password-reset' | 'ticket-confirmation' | 'announcement' | 'team-invitation' | 'event-cancellation' | 'email-verification' | 'payout-requested' | 'payout-approved' | 'payout-rejected' | 'payout-completed' | 'installment-reminder' | 'installment-overdue' | 'installment-defaulted';
     to: string;
     [key: string]: any;
 }
@@ -151,6 +151,42 @@ export const emailWorker = new Worker<EmailJobData>(
                         netAmount: data.netAmount,
                         currency: data.currency,
                         paymentReference: data.paymentReference,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'installment-reminder': {
+                    const template = EmailTemplates.installmentReminder({
+                        eventTitle: data.eventTitle,
+                        sequence: data.sequence,
+                        installmentCount: data.installmentCount,
+                        amount: data.amount,
+                        currency: data.currency,
+                        dueDate: data.dueDate,
+                        payUrl: data.payUrl,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'installment-overdue': {
+                    const template = EmailTemplates.installmentOverdue({
+                        eventTitle: data.eventTitle,
+                        sequence: data.sequence,
+                        installmentCount: data.installmentCount,
+                        amount: data.amount,
+                        currency: data.currency,
+                        graceDays: data.graceDays,
+                        payUrl: data.payUrl,
+                    });
+                    await EmailService.send(to, template.subject, template.html, template.text);
+                    break;
+                }
+
+                case 'installment-defaulted': {
+                    const template = EmailTemplates.installmentDefaulted({
+                        eventTitle: data.eventTitle,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;

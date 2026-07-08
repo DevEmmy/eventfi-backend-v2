@@ -35,6 +35,8 @@ const ticketSchema = z.object({
     maxPerUser: z.number().int().min(1).optional(),
     salesStart: z.string().optional(),
     salesEnd: z.string().optional(),
+    allowInstallments: z.boolean().optional(),
+    maxInstallments: z.number().int().min(2).max(12).optional(),
 });
 
 const mediaSchema = z.object({

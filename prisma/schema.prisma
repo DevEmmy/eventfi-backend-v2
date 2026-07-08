@@ -50,18 +50,18 @@ model User {
   teamMemberships EventTeamMember[]
   chatMessages    ChatMessage[]
   chatMemberships ChatMember[]
-  notifications    Notification[]
-  vendor           Vendor?
-  activityEntries  ActivityEntry[]
-  payoutAccount    PayoutAccount?
-  payoutRequests   PayoutRequest[]
+  notifications   Notification[]
+  vendor          Vendor?
+  activityEntries ActivityEntry[]
+  payoutAccount   PayoutAccount?
+  payoutRequests  PayoutRequest[]
 
   ownedCommunities     Community[]       @relation("OwnedCommunities")
   communityMemberships CommunityMember[]
   communityFollows     CommunityFollow[]
 
   communityPostsAuthored        CommunityPost[]        @relation("CommunityPostsAuthored")
-  communityPostCommentsAuthored CommunityPostComment[]  @relation("CommunityPostCommentsAuthored")
+  communityPostCommentsAuthored CommunityPostComment[] @relation("CommunityPostCommentsAuthored")
   communityPostLikes            CommunityPostLike[]
 }
 
@@ -83,6 +83,10 @@ enum NotificationType {
   SYSTEM
   COMMUNITY_INVITE
   COMMUNITY_POST_COMMENT
+  INSTALLMENT_DUE
+  INSTALLMENT_OVERDUE
+  INSTALLMENT_PAID
+  INSTALLMENT_DEFAULTED
 }
 
 model Notification {
@@ -190,7 +194,7 @@ model Event {
   coverImage   String
   gallery      String[]
   videoUrl     String?
-  colorPalette Json?    // { background, lightTone, textColor } extracted from coverImage
+  colorPalette Json? // { background, lightTone, textColor } extracted from coverImage
 
   organizerId String @db.Uuid
   organizer   User   @relation(fields: [organizerId], references: [id])
@@ -240,6 +244,9 @@ model Ticket {
   maxPerUser  Int?
   salesStart  DateTime?
   salesEnd    DateTime?
+
+  allowInstallments Boolean @default(false)
+  maxInstallments   Int? // e.g. 3 — cap on how many installments a buyer can split this ticket into
 
   eventId     String       @db.Uuid
   event       Event        @relation(fields: [eventId], references: [id])
@@ -371,8 +378,9 @@ model BookingOrder {
   eventId String @db.Uuid
   event   Event  @relation(fields: [eventId], references: [id])
 
-  items     OrderItem[]
-  attendees Attendee[]
+  items           OrderItem[]
+  attendees       Attendee[]
+  installmentPlan InstallmentPlan?
 
   // Pricing
   subtotal   Float
@@ -401,6 +409,60 @@ model BookingOrder {
   @@index([eventId, status])
 }
 
+// ============ INSTALLMENT PAYMENTS ============
+
+enum InstallmentPlanStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  CANCELLED
+}
+
+enum InstallmentPaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+  FAILED
+}
+
+model InstallmentPlan {
+  id             String       @id @default(uuid()) @db.Uuid
+  bookingOrderId String       @unique @db.Uuid
+  bookingOrder   BookingOrder @relation(fields: [bookingOrderId], references: [id], onDelete: Cascade)
+
+  installmentCount  Int
+  downPaymentAmount Float
+  finalDueDate      DateTime // last installment must clear by this date (event cutoff already applied)
+  status            InstallmentPlanStatus @default(ACTIVE)
+
+  payments InstallmentPayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model InstallmentPayment {
+  id                String          @id @default(uuid()) @db.Uuid
+  installmentPlanId String          @db.Uuid
+  installmentPlan   InstallmentPlan @relation(fields: [installmentPlanId], references: [id], onDelete: Cascade)
+
+  sequence         Int // 1-based order within the plan (1 = down payment)
+  amount           Float
+  dueDate          DateTime
+  status           InstallmentPaymentStatus @default(PENDING)
+  paymentReference String? // Paystack transaction reference for this specific installment
+  paidAt           DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([installmentPlanId, sequence])
+  @@index([status, dueDate])
+  @@index([paymentReference])
+}
+
 model OrderItem {
   id         String       @id @default(uuid()) @db.Uuid
   orderId    String       @db.Uuid
@@ -422,8 +484,8 @@ model Attendee {
   name          String
   email         String
   phone         String?
-  city          String?      // Attendee's city (for tracking)
-  location      String?      // Attendee's country/region (for tracking)
+  city          String? // Attendee's city (for tracking)
+  location      String? // Attendee's country/region (for tracking)
   ticketCode    String       @unique // Unique QR code content
   checkedIn     Boolean      @default(false)
   checkedInAt   DateTime?
@@ -556,32 +618,32 @@ enum VendorBookingStatus {
 }
 
 model Vendor {
-  id           String             @id @default(uuid()) @db.Uuid
-  userId       String             @db.Uuid
-  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name         String
-  category     VendorCategory
-  description  String
-  logo         String?
-  coverImage   String?
-  portfolio    String[]
-  specialties  String[]
-  location     String             // e.g. "Lagos, Nigeria"
-  address      String?
-  phone        String?
-  email        String?
-  website      String?
-  priceMin     Float?
-  priceMax     Float?
-  currency     String             @default("NGN")
-  yearsOfExperience Int           @default(0)
-  availability VendorAvailability @default(AVAILABLE)
-  isVerified   Boolean            @default(false)
+  id                String             @id @default(uuid()) @db.Uuid
+  userId            String             @db.Uuid
+  user              User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name              String
+  category          VendorCategory
+  description       String
+  logo              String?
+  coverImage        String?
+  portfolio         String[]
+  specialties       String[]
+  location          String // e.g. "Lagos, Nigeria"
+  address           String?
+  phone             String?
+  email             String?
+  website           String?
+  priceMin          Float?
+  priceMax          Float?
+  currency          String             @default("NGN")
+  yearsOfExperience Int                @default(0)
+  availability      VendorAvailability @default(AVAILABLE)
+  isVerified        Boolean            @default(false)
 
   // Computed/cached stats
-  averageRating Float             @default(0)
-  reviewCount   Int               @default(0)
-  bookingCount  Int               @default(0)
+  averageRating Float @default(0)
+  reviewCount   Int   @default(0)
+  bookingCount  Int   @default(0)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -596,11 +658,11 @@ model Vendor {
 }
 
 model VendorReview {
-  id       String @id @default(uuid()) @db.Uuid
-  vendorId String @db.Uuid
-  vendor   Vendor @relation(fields: [vendorId], references: [id], onDelete: Cascade)
-  userId   String @db.Uuid
-  rating   Int    // 1-5
+  id       String   @id @default(uuid()) @db.Uuid
+  vendorId String   @db.Uuid
+  vendor   Vendor   @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  userId   String   @db.Uuid
+  rating   Int // 1-5
   comment  String
   photos   String[]
 
@@ -623,7 +685,7 @@ model VendorBooking {
   eventTime     String
   eventLocation String
   eventType     String
-  guestCount    Int           @default(0)
+  guestCount    Int      @default(0)
   duration      String?
 
   // Contact
@@ -633,7 +695,7 @@ model VendorBooking {
 
   specialRequests String?
   estimatedPrice  Float?
-  currency        String @default("NGN")
+  currency        String  @default("NGN")
 
   declineReason String?
 
@@ -663,13 +725,13 @@ model EventActivity {
   event     Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
   type      ActivityType
   status    ActivityStatus @default(IDLE)
-  config    Json           @default("{}")  // type-specific config (e.g. winnersCount for lucky draw)
-  results   Json?          // computed results after ending
-  createdBy String         @db.Uuid        // organizer userId
+  config    Json           @default("{}") // type-specific config (e.g. winnersCount for lucky draw)
+  results   Json? // computed results after ending
+  createdBy String         @db.Uuid // organizer userId
   createdAt DateTime       @default(now())
   updatedAt DateTime       @updatedAt
 
-  entries   ActivityEntry[]
+  entries ActivityEntry[]
 }
 
 model ActivityEntry {
@@ -678,7 +740,7 @@ model ActivityEntry {
   activity   EventActivity @relation(fields: [activityId], references: [id], onDelete: Cascade)
   userId     String        @db.Uuid
   user       User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  response   Json          @default("{}")  // e.g. { taps: 5 } for applause
+  response   Json          @default("{}") // e.g. { taps: 5 } for applause
   createdAt  DateTime      @default(now())
 
   @@unique([activityId, userId])
@@ -688,31 +750,31 @@ model ActivityEntry {
 // ==================== PAYOUTS ====================
 
 model PayoutAccount {
-  id            String   @id @default(uuid()) @db.Uuid
-  organizerId   String   @unique @db.Uuid
-  organizer     User     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  id          String @id @default(uuid()) @db.Uuid
+  organizerId String @unique @db.Uuid
+  organizer   User   @relation(fields: [organizerId], references: [id], onDelete: Cascade)
 
   bankName      String
-  bankCode      String   // CBN bank code e.g. "058" for GTBank
+  bankCode      String // CBN bank code e.g. "058" for GTBank
   accountNumber String
-  accountName   String   // confirmed name returned by bank verification
+  accountName   String // confirmed name returned by bank verification
 
-  isVerified    Boolean  @default(false)
-  verifiedAt    DateTime?
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  payouts       PayoutRequest[]
+  payouts PayoutRequest[]
 }
 
 enum PayoutStatus {
-  PENDING     // submitted, awaiting admin review
-  APPROVED    // admin approved, ready to disburse
-  PROCESSING  // payment initiated to organizer's bank
-  COMPLETED   // funds successfully transferred
-  REJECTED    // admin rejected with reason
-  CANCELLED   // organizer cancelled before approval
+  PENDING // submitted, awaiting admin review
+  APPROVED // admin approved, ready to disburse
+  PROCESSING // payment initiated to organizer's bank
+  COMPLETED // funds successfully transferred
+  REJECTED // admin rejected with reason
+  CANCELLED // organizer cancelled before approval
 }
 
 model PayoutRequest {
@@ -725,20 +787,20 @@ model PayoutRequest {
   event       Event?        @relation(fields: [eventId], references: [id])
 
   // Financial snapshot at request time
-  grossRevenue    Float  // SUM(subtotal) from CONFIRMED + COMPLETED-payment orders
-  platformFee     Float  // SUM(serviceFee) — retained by EventFi
-  refundsTotal    Float  // deductions for refunded orders
-  previousPayouts Float  // prior non-failed payouts for same scope
-  netAmount       Float  // what the organizer receives
+  grossRevenue    Float // SUM(subtotal) from CONFIRMED + COMPLETED-payment orders
+  platformFee     Float // SUM(serviceFee) — retained by EventFi
+  refundsTotal    Float // deductions for refunded orders
+  previousPayouts Float // prior non-failed payouts for same scope
+  netAmount       Float // what the organizer receives
   currency        String @default("NGN")
 
-  status          PayoutStatus @default(PENDING)
+  status PayoutStatus @default(PENDING)
 
   // Admin review fields
-  reviewerId       String?  @db.Uuid
+  reviewerId       String? @db.Uuid
   reviewNote       String?
   rejectionReason  String?
-  paymentReference String?  // bank transfer reference once processed
+  paymentReference String? // bank transfer reference once processed
 
   // Anti-fraud metadata
   requestIp String?

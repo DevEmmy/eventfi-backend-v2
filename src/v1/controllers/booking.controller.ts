@@ -9,7 +9,7 @@ export class BookingController {
     static async initiateOrder(req: Request, res: Response) {
         try {
             const userId = (req as any).user?.id;
-            const { eventId, items, guestEmail } = req.body;
+            const { eventId, items, guestEmail, installmentPlan } = req.body;
 
             if (!eventId || !items || !items.length) {
                 return res.status(400).json({
@@ -25,7 +25,7 @@ export class BookingController {
                 });
             }
 
-            const order = await BookingService.initiateOrder(userId, eventId, items, guestEmail);
+            const order = await BookingService.initiateOrder(userId, eventId, items, guestEmail, installmentPlan);
 
             return res.status(201).json({
                 status: 'success',
@@ -33,7 +33,9 @@ export class BookingController {
             });
         } catch (error: any) {
             const statusCode = error.message.includes('not found') ? 404 :
-                error.message.includes('Not enough') || error.message.includes('Maximum') ? 400 : 500;
+                error.message.includes('Not enough') || error.message.includes('Maximum') ||
+                error.message.includes('installment') || error.message.includes('Installment') ||
+                error.message.includes('too soon') ? 400 : 500;
             return res.status(statusCode).json({
                 status: 'error',
                 message: error.message || 'Failed to create order',
@@ -157,6 +159,59 @@ export class BookingController {
             console.error('[initializePayment] error:', message, error);
             const statusCode = message.includes('not found') ? 404 :
                 message.includes('free') ? 400 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message,
+            });
+        }
+    }
+
+    /**
+     * GET /bookings/:orderId/installments - Get installment schedule for an order
+     */
+    static async getInstallments(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id;
+            const { orderId } = req.params;
+
+            const result = await BookingService.getInstallments(orderId, userId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result,
+            });
+        } catch (error: any) {
+            const statusCode = error.message.includes('not found') ? 404 :
+                error.message.includes('Unauthorized') ? 403 :
+                error.message.includes('no installment plan') ? 400 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to fetch installment schedule',
+            });
+        }
+    }
+
+    /**
+     * POST /bookings/:orderId/installments/:installmentId/pay - Initialize payment for one installment
+     */
+    static async payInstallment(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id;
+            const { orderId, installmentId } = req.params;
+            const { callbackUrl } = req.body;
+
+            const result = await BookingService.initializeInstallmentPayment(orderId, installmentId, userId, callbackUrl);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result,
+            });
+        } catch (error: any) {
+            const message = error.message ?? error?.response?.data?.message ?? 'Failed to initialize installment payment';
+            console.error('[payInstallment] error:', message, error);
+            const statusCode = message.includes('not found') ? 404 :
+                message.includes('Unauthorized') ? 403 :
+                message.includes('already been paid') || message.includes('no longer active') ? 400 : 500;
             return res.status(statusCode).json({
                 status: 'error',
                 message,
