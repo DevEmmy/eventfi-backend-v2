@@ -61,14 +61,14 @@ async function sendUpcomingReminders() {
         const recipient = await getRecipient(order.id, order.userId);
 
         const dueDateStr = installment.dueDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-        const payUrl = `${FRONTEND_URL}/profile?tab=orders&orderId=${order.id}`;
+        const payUrl = `${FRONTEND_URL}/profile?tab=payments&orderId=${order.id}`;
 
         await NotificationService.create({
             userId: order.userId,
             type: 'INSTALLMENT_DUE',
             title: 'Installment payment due soon',
             message: `Installment ${installment.sequence}/${installment.installmentPlan.installmentCount} for "${order.event.title}" (${order.currency} ${installment.amount.toLocaleString()}) is due ${dueDateStr}.`,
-            actionUrl: `/profile?tab=orders`,
+            actionUrl: `/profile?tab=payments`,
             metadata: { eventId: order.eventId, orderId: order.id, installmentPaymentId: installment.id },
         }).catch(() => {});
 
@@ -119,14 +119,14 @@ async function flagOverdue() {
 
         const order = installment.installmentPlan.bookingOrder;
         const recipient = await getRecipient(order.id, order.userId);
-        const payUrl = `${FRONTEND_URL}/profile?tab=orders&orderId=${order.id}`;
+        const payUrl = `${FRONTEND_URL}/profile?tab=payments&orderId=${order.id}`;
 
         NotificationService.create({
             userId: order.userId,
             type: 'INSTALLMENT_OVERDUE',
             title: 'Installment payment overdue',
             message: `Installment ${installment.sequence}/${installment.installmentPlan.installmentCount} for "${order.event.title}" is overdue. Pay within ${GRACE_DAYS} days to keep your tickets.`,
-            actionUrl: `/profile?tab=orders`,
+            actionUrl: `/profile?tab=payments`,
             metadata: { eventId: order.eventId, orderId: order.id, installmentPaymentId: installment.id },
         }).catch(() => {});
 

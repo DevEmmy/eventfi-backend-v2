@@ -459,7 +459,7 @@ export class BookingService {
             type: 'INSTALLMENT_DEFAULTED',
             title: 'Installment plan cancelled',
             message: `Your installment plan for "${order.event.title}" was cancelled after a missed payment. Your tickets have been released.`,
-            actionUrl: `/profile?tab=orders`,
+            actionUrl: `/profile?tab=payments`,
             metadata: { eventId: order.eventId, orderId: order.id },
         }).catch(() => {});
 
@@ -908,7 +908,7 @@ export class BookingService {
                     type: 'INSTALLMENT_PAID',
                     title: 'Installment payment received',
                     message: `Installment ${installmentPayment.sequence}/${plan.installmentCount} received. ${remaining} payment${remaining > 1 ? 's' : ''} left.`,
-                    actionUrl: `/profile?tab=orders`,
+                    actionUrl: `/profile?tab=payments`,
                     metadata: { eventId: order.eventId, orderId: order.id, installmentPlanId: plan.id },
                 }).catch(() => {});
             }
