@@ -162,7 +162,7 @@ export class ManageController {
         try {
             const userId = (req as any).user.id;
             const { eventId } = req.params;
-            const { recipients, attendeeIds, subject, body } = req.body;
+            const { recipients, attendeeIds, subject, body, ticketType } = req.body;
 
             if (!subject || !body) {
                 return res.status(400).json({
@@ -171,7 +171,7 @@ export class ManageController {
                 });
             }
 
-            const data = await ManageService.sendBulkEmail(eventId, userId, recipients, attendeeIds, subject, body);
+            const data = await ManageService.sendBulkEmail(eventId, userId, recipients, attendeeIds, subject, body, ticketType);
 
             return res.status(200).json({
                 status: 'success',
@@ -192,7 +192,7 @@ export class ManageController {
         try {
             const userId = (req as any).user.id;
             const { eventId } = req.params;
-            const { recipients, attendeeIds, messageType, message } = req.body;
+            const { recipients, attendeeIds, messageType, message, ticketType } = req.body;
 
             if (messageType !== 'reminder' && messageType !== 'custom') {
                 return res.status(400).json({
@@ -216,7 +216,7 @@ export class ManageController {
                 }
             }
 
-            const data = await ManageService.sendBulkSms(eventId, userId, recipients, attendeeIds, messageType, message);
+            const data = await ManageService.sendBulkSms(eventId, userId, recipients, attendeeIds, messageType, message, ticketType);
 
             return res.status(200).json({
                 status: 'success',

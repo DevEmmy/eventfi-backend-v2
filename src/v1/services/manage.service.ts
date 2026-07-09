@@ -736,7 +736,8 @@ export class ManageService {
         recipients: 'all' | 'checked_in' | 'not_checked_in' | 'custom',
         attendeeIds: string[] | undefined,
         subject: string,
-        body: string
+        body: string,
+        ticketType?: string
     ) {
         // 1. Check access
         await this.checkEventAccess(userId, eventId, 'canManageAttendees');
@@ -759,6 +760,7 @@ export class ManageService {
         if (recipients === 'custom' && attendeeIds) {
             where.id = { in: attendeeIds };
         }
+        if (ticketType && ticketType !== 'all') where.ticketId = ticketType;
 
         // 4. Fetch attendees with their emails
         const attendees = await prisma.attendee.findMany({
@@ -815,7 +817,8 @@ export class ManageService {
         recipients: 'all' | 'checked_in' | 'not_checked_in' | 'custom',
         attendeeIds: string[] | undefined,
         messageType: 'reminder' | 'custom',
-        customMessage?: string
+        customMessage?: string,
+        ticketType?: string
     ) {
         const MAX_CHARS = 120;
 
@@ -848,6 +851,7 @@ export class ManageService {
         if (recipients === 'custom' && attendeeIds) {
             where.id = { in: attendeeIds };
         }
+        if (ticketType && ticketType !== 'all') where.ticketId = ticketType;
 
         // 4. Fetch attendees with a phone number on file
         const attendees = await prisma.attendee.findMany({
