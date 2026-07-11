@@ -167,6 +167,32 @@ export class BookingController {
     }
 
     /**
+     * POST /bookings/:orderId/reinstate - Reinstate a defaulted installment plan
+     */
+    static async reinstateOrder(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user?.id;
+            const { orderId } = req.params;
+
+            const result = await BookingService.reinstateOrder(orderId, userId);
+
+            return res.status(200).json({
+                status: 'success',
+                data: result,
+            });
+        } catch (error: any) {
+            const statusCode = error.message.includes('not found') ? 404 :
+                error.message.includes('Unauthorized') ? 403 :
+                error.message.includes('Not enough') || error.message.includes('already started') ||
+                error.message.includes('Only a defaulted') || error.message.includes('no installment plan') ? 400 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to reinstate order',
+            });
+        }
+    }
+
+    /**
      * GET /bookings/:orderId/installments - Get installment schedule for an order
      */
     static async getInstallments(req: Request, res: Response) {

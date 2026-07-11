@@ -423,6 +423,7 @@ enum InstallmentPaymentStatus {
   PAID
   OVERDUE
   FAILED
+  REFUNDED
 }
 
 model InstallmentPlan {

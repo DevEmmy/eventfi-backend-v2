@@ -110,6 +110,37 @@ export class PaymentService {
     }
 
     /**
+     * Refund a previously-settled Paystack transaction (fully or partially).
+     * Paystack processes refunds asynchronously — a 'status' of 'pending' or
+     * 'processing' just means the request was accepted, not that funds moved yet.
+     */
+    static async refundTransaction(reference: string, amount: number): Promise<{ status: string }> {
+        if (!PAYSTACK_SECRET_KEY) {
+            throw new Error('Payment service not configured. Set PAYSTACK_SECRET_KEY environment variable.');
+        }
+
+        const response = await fetch('https://api.paystack.co/refund', {
+            method: 'POST',
+            headers: {
+                Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                transaction: reference,
+                amount: Math.round(amount * 100), // NGN → kobo
+            }),
+        });
+
+        const data = await response.json() as any;
+
+        if (!data.status) {
+            throw new Error(data.message || 'Failed to initiate refund');
+        }
+
+        return { status: data.data?.status ?? 'pending' };
+    }
+
+    /**
      * Verify a Paystack webhook signature.
      * Algorithm: HMAC-SHA512(rawBody, PAYSTACK_SECRET_KEY)
      * Header:    x-paystack-signature: {hex_digest}

@@ -454,11 +454,35 @@ export class BookingService {
             data: { status: 'DEFAULTED' }
         });
 
+        // Refund policy: the down payment (sequence 1) is a non-refundable deposit and is kept.
+        // Everything paid beyond that is refunded via Paystack, since the attendee gets no ticket.
+        const refundableInstallments = await prisma.installmentPayment.findMany({
+            where: { installmentPlanId: order.installmentPlan.id, sequence: { gt: 1 }, status: 'PAID' }
+        });
+
+        let refundedTotal = 0;
+        for (const installment of refundableInstallments) {
+            if (!installment.paymentReference) continue;
+            try {
+                await PaymentService.refundTransaction(installment.paymentReference, installment.amount);
+                await prisma.installmentPayment.update({
+                    where: { id: installment.id },
+                    data: { status: 'REFUNDED' }
+                });
+                refundedTotal += installment.amount;
+            } catch (error) {
+                // Left as PAID so it's visible for manual reconciliation via the Paystack dashboard
+                console.error(`[defaultInstallmentPlan] Failed to refund installment ${installment.id} (order ${orderId}):`, error);
+            }
+        }
+
         NotificationService.create({
             userId: order.userId,
             type: 'INSTALLMENT_DEFAULTED',
             title: 'Installment plan cancelled',
-            message: `Your installment plan for "${order.event.title}" was cancelled after a missed payment. Your tickets have been released.`,
+            message: refundedTotal > 0
+                ? `Your installment plan for "${order.event.title}" was cancelled after a missed payment. Your tickets have been released. Your ${order.currency} ${order.installmentPlan.downPaymentAmount.toLocaleString()} deposit is non-refundable, but the ${order.currency} ${refundedTotal.toLocaleString()} you paid beyond that has been refunded.`
+                : `Your installment plan for "${order.event.title}" was cancelled after a missed payment. Your tickets have been released. Your ${order.currency} ${order.installmentPlan.downPaymentAmount.toLocaleString()} deposit is non-refundable.`,
             actionUrl: `/profile?tab=payments`,
             metadata: { eventId: order.eventId, orderId: order.id },
         }).catch(() => {});
@@ -486,8 +510,86 @@ export class BookingService {
                 to: recipientEmail,
                 eventTitle: order.event.title,
                 name: recipientName,
+                currency: order.currency,
+                depositAmount: order.installmentPlan.downPaymentAmount,
+                refundedAmount: refundedTotal,
             }).catch(err => console.error('Failed to queue installment-defaulted email:', err));
         }
+    }
+
+    /**
+     * Reinstate a defaulted installment plan — only while the event hasn't started and the
+     * ticket tier(s) still have room. The remaining balance (total minus the forfeited down
+     * payment) becomes a single new catch-up installment due immediately; there's too little
+     * time left this close to the event to offer a fresh multi-installment schedule.
+     */
+    static async reinstateOrder(orderId: string, userId: string | undefined) {
+        const order = await prisma.bookingOrder.findUnique({
+            where: { id: orderId },
+            include: {
+                items: { include: { ticket: true } },
+                installmentPlan: { include: { payments: true } },
+                event: { select: { startDate: true } }
+            }
+        });
+
+        if (!order) throw new Error('Order not found');
+        if (userId && order.userId !== userId) throw new Error('Unauthorized');
+        if (!order.installmentPlan) throw new Error('This order has no installment plan');
+        if (order.status !== 'CANCELLED' || order.installmentPlan.status !== 'DEFAULTED') {
+            throw new Error('Only a defaulted installment plan can be reinstated');
+        }
+        if (order.event.startDate.getTime() <= Date.now()) {
+            throw new Error('This event has already started — reinstating is no longer possible');
+        }
+        for (const item of order.items) {
+            if (item.ticket.remaining < item.quantity) {
+                throw new Error(`Not enough "${item.ticket.name}" tickets left to reinstate this order`);
+            }
+        }
+
+        // Re-reserve inventory — it was released back to the pool when the plan defaulted
+        await prisma.$transaction(
+            order.items.map(item =>
+                prisma.ticket.update({
+                    where: { id: item.ticketId },
+                    data: { remaining: { decrement: item.quantity } },
+                })
+            )
+        );
+
+        const outstanding = order.total - order.installmentPlan.downPaymentAmount;
+        const nextSequence = Math.max(...order.installmentPlan.payments.map(p => p.sequence)) + 1;
+
+        await prisma.installmentPayment.create({
+            data: {
+                installmentPlanId: order.installmentPlan.id,
+                sequence: nextSequence,
+                amount: outstanding,
+                dueDate: new Date(),
+                status: 'PENDING',
+            }
+        });
+
+        await prisma.installmentPlan.update({
+            where: { id: order.installmentPlan.id },
+            data: { status: 'ACTIVE' }
+        });
+        await prisma.bookingOrder.update({
+            where: { id: orderId },
+            data: { status: 'PENDING' }
+        });
+
+        NotificationService.create({
+            userId: order.userId,
+            type: 'INSTALLMENT_DUE',
+            title: 'Installment plan reinstated',
+            message: `Your tickets are held again. Pay the remaining ${order.currency} ${outstanding.toLocaleString()} to confirm them.`,
+            actionUrl: `/profile?tab=payments`,
+            metadata: { eventId: order.eventId, orderId: order.id },
+        }).catch(() => {});
+
+        return this.getOrder(orderId, userId);
     }
 
     /**

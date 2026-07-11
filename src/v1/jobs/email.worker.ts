@@ -192,6 +192,9 @@ export const emailWorker = new Worker<EmailJobData>(
                     const template = EmailTemplates.installmentDefaulted({
                         eventTitle: data.eventTitle,
                         recipientName: data.name,
+                        currency: data.currency,
+                        depositAmount: data.depositAmount,
+                        refundedAmount: data.refundedAmount,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;

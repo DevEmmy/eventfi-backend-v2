@@ -453,20 +453,25 @@ export const EmailTemplates = {
         text: `Hi ${data.recipientName || 'there'}, installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is overdue: ${data.currency} ${data.amount.toLocaleString()}. You have ${data.graceDays} day(s) left before cancellation. Pay at: ${data.payUrl}`
     }),
 
-    installmentDefaulted: (data: { eventTitle: string; recipientName?: string }) => ({
-        subject: `Your installment plan for ${data.eventTitle} was cancelled`,
-        html: renderLayout({
-            heading: 'Installment plan cancelled',
-            bodyHtml: `
-                <p>Hi ${data.recipientName || 'there'},</p>
-                <p>Your installment plan for <strong>${data.eventTitle}</strong> has been cancelled after a missed payment past the grace period.</p>
-                <p>Your reserved tickets have been released back to the event. Amounts already paid are non-refundable.</p>
-                <p>If you'd still like to attend, you can book again from the event page.</p>
-                <p>The EventFi Team</p>
-            `,
-        }),
-        text: `Hi ${data.recipientName || 'there'}, your installment plan for ${data.eventTitle} was cancelled after a missed payment. Reserved tickets have been released. Amounts already paid are non-refundable.`
-    }),
+    installmentDefaulted: (data: { eventTitle: string; recipientName?: string; currency: string; depositAmount: number; refundedAmount: number }) => {
+        const refundLine = data.refundedAmount > 0
+            ? `Your ${data.currency} ${data.depositAmount.toLocaleString()} deposit is non-refundable, but the ${data.currency} ${data.refundedAmount.toLocaleString()} you paid beyond that has been refunded to your original payment method.`
+            : `Your ${data.currency} ${data.depositAmount.toLocaleString()} deposit is non-refundable.`;
+        return {
+            subject: `Your installment plan for ${data.eventTitle} was cancelled`,
+            html: renderLayout({
+                heading: 'Installment plan cancelled',
+                bodyHtml: `
+                    <p>Hi ${data.recipientName || 'there'},</p>
+                    <p>Your installment plan for <strong>${data.eventTitle}</strong> has been cancelled after a missed payment past the grace period.</p>
+                    <p>Your reserved tickets have been released back to the event. ${refundLine}</p>
+                    <p>If you'd still like to attend, check the event page — you may be able to reinstate your plan if tickets are still available.</p>
+                    <p>The EventFi Team</p>
+                `,
+            }),
+            text: `Hi ${data.recipientName || 'there'}, your installment plan for ${data.eventTitle} was cancelled after a missed payment. Reserved tickets have been released. ${refundLine}`
+        };
+    },
 
     // ─── Community emails ──────────────────────────────────────────────────────
 

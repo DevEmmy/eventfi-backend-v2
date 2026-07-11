@@ -151,27 +151,46 @@ async function flagOverdue() {
 }
 
 /**
- * Default plans whose overdue installment has exceeded the grace period —
- * releases ticket inventory and cancels the order (no partial refund).
+ * Default plans whose overdue installment has exceeded the grace period.
+ * Grace never extends past the event's start — there's nothing left to attend
+ * after it begins, so a plan due right at the cutoff gets a shorter grace
+ * window than one that lapsed weeks out. Refunds anything paid beyond the
+ * (forfeited) down payment; see BookingService.defaultInstallmentPlan.
  */
 async function sweepDefaults() {
-    const cutoff = new Date(Date.now() - GRACE_DAYS * ONE_DAY_MS);
+    const now = Date.now();
 
-    const expired = await prisma.installmentPayment.findMany({
+    const overdueInstallments = await prisma.installmentPayment.findMany({
         where: {
             status: 'OVERDUE',
-            dueDate: { lt: cutoff },
             installmentPlan: { status: 'ACTIVE' },
         },
-        distinct: ['installmentPlanId'],
-        select: { installmentPlanId: true, installmentPlan: { select: { bookingOrderId: true } } },
+        select: {
+            dueDate: true,
+            installmentPlan: {
+                select: {
+                    bookingOrderId: true,
+                    bookingOrder: { select: { event: { select: { startDate: true } } } },
+                },
+            },
+        },
     });
 
-    for (const item of expired) {
-        await BookingService.defaultInstallmentPlan(item.installmentPlan.bookingOrderId);
+    const orderIdsToDefault = new Set<string>();
+    for (const installment of overdueInstallments) {
+        const eventStart = installment.installmentPlan.bookingOrder.event.startDate.getTime();
+        const graceDeadline = installment.dueDate.getTime() + GRACE_DAYS * ONE_DAY_MS;
+        const effectiveDeadline = Math.min(graceDeadline, eventStart);
+        if (now >= effectiveDeadline) {
+            orderIdsToDefault.add(installment.installmentPlan.bookingOrderId);
+        }
     }
 
-    if (expired.length > 0) console.log(`[InstallmentScheduler] Defaulted ${expired.length} installment plan(s)`);
+    for (const orderId of orderIdsToDefault) {
+        await BookingService.defaultInstallmentPlan(orderId);
+    }
+
+    if (orderIdsToDefault.size > 0) console.log(`[InstallmentScheduler] Defaulted ${orderIdsToDefault.size} installment plan(s)`);
 }
 
 /**
