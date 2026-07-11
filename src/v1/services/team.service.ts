@@ -157,6 +157,7 @@ export class TeamService {
                 role: role.replace('_', ' ').toLowerCase(),
                 eventUrl,
                 eventImageUrl: event?.coverImage,
+                recipientName: targetUser.displayName || undefined,
             });
             EmailService.send(targetUser.email, template.subject, template.html, template.text).catch(err =>
                 console.error('Failed to send team added email:', err)

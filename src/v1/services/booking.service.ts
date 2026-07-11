@@ -475,15 +475,17 @@ export class BookingService {
         const primaryAttendee = await prisma.attendee.findFirst({
             where: { orderId: order.id },
             orderBy: { createdAt: 'asc' },
-            select: { email: true }
+            select: { email: true, name: true }
         });
-        const buyer = await prisma.user.findUnique({ where: { id: order.userId }, select: { email: true } });
+        const buyer = await prisma.user.findUnique({ where: { id: order.userId }, select: { email: true, displayName: true } });
         const recipientEmail = primaryAttendee?.email ?? buyer?.email;
+        const recipientName = primaryAttendee?.name ?? buyer?.displayName;
         if (recipientEmail) {
             emailQueue.add('installment-defaulted', {
                 type: 'installment-defaulted',
                 to: recipientEmail,
                 eventTitle: order.event.title,
+                name: recipientName,
             }).catch(err => console.error('Failed to queue installment-defaulted email:', err));
         }
     }

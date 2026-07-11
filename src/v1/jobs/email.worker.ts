@@ -47,7 +47,7 @@ export const emailWorker = new Worker<EmailJobData>(
                 }
 
                 case 'password-reset': {
-                    const template = EmailTemplates.passwordReset(data.resetUrl);
+                    const template = EmailTemplates.passwordReset(data.resetUrl, data.name);
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
                 }
@@ -79,6 +79,7 @@ export const emailWorker = new Worker<EmailJobData>(
                         eventUrl: data.eventUrl,
                         organizerAvatarUrl: data.organizerAvatarUrl,
                         organizerProfileUrl: data.organizerProfileUrl,
+                        recipientName: data.recipientName,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -103,13 +104,14 @@ export const emailWorker = new Worker<EmailJobData>(
                         reason: data.reason,
                         refundPolicy: data.refundPolicy,
                         eventImageUrl: data.eventImageUrl,
+                        recipientName: data.recipientName,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
                 }
 
                 case 'email-verification': {
-                    const template = EmailTemplates.emailVerification(data.verifyUrl);
+                    const template = EmailTemplates.emailVerification(data.verifyUrl, data.name);
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
                 }
@@ -165,6 +167,7 @@ export const emailWorker = new Worker<EmailJobData>(
                         currency: data.currency,
                         dueDate: data.dueDate,
                         payUrl: data.payUrl,
+                        recipientName: data.name,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -179,6 +182,7 @@ export const emailWorker = new Worker<EmailJobData>(
                         currency: data.currency,
                         graceDays: data.graceDays,
                         payUrl: data.payUrl,
+                        recipientName: data.name,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;
@@ -187,6 +191,7 @@ export const emailWorker = new Worker<EmailJobData>(
                 case 'installment-defaulted': {
                     const template = EmailTemplates.installmentDefaulted({
                         eventTitle: data.eventTitle,
+                        recipientName: data.name,
                     });
                     await EmailService.send(to, template.subject, template.html, template.text);
                     break;

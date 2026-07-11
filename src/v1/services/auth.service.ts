@@ -53,6 +53,7 @@ export class AuthService {
             type: 'email-verification',
             to: user.email,
             verifyUrl,
+            name: user.displayName || user.username || undefined,
         }).catch(err => console.error('Failed to queue verification email:', err));
 
         return {
@@ -129,7 +130,7 @@ export class AuthService {
 
         // Queue password reset email via BullMQ
         const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/auth/reset-password?token=${resetToken}`;
-        await emailQueue.add('password-reset', { type: 'password-reset', to: user.email, resetUrl });
+        await emailQueue.add('password-reset', { type: 'password-reset', to: user.email, resetUrl, name: user.displayName || user.username || undefined });
 
         return { message: 'If an account exists with this email, a reset link has been sent.' };
     }
@@ -390,6 +391,7 @@ export class AuthService {
             type: 'email-verification',
             to: user.email,
             verifyUrl,
+            name: user.displayName || user.username || undefined,
         }).catch(err => console.error('Failed to queue verification email:', err));
 
         return { message: 'Verification email sent' };

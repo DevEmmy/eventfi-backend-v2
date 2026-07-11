@@ -78,8 +78,8 @@ export class EmailService {
         return this.send(to, template.subject, template.html, template.text);
     }
 
-    static async sendPasswordResetEmail(to: string, resetUrl: string) {
-        const template = EmailTemplates.passwordReset(resetUrl);
+    static async sendPasswordResetEmail(to: string, resetUrl: string, name?: string) {
+        const template = EmailTemplates.passwordReset(resetUrl, name);
         return this.send(to, template.subject, template.html, template.text);
     }
 

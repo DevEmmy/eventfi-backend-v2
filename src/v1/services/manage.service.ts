@@ -666,7 +666,7 @@ export class ManageService {
             where: { eventId, status: 'CONFIRMED' },
             select: {
                 id: true,
-                attendees: { select: { email: true } },
+                attendees: { select: { email: true, name: true } },
             },
         });
 
@@ -697,16 +697,16 @@ export class ManageService {
                 ? new Date(event.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
                 : 'TBA';
 
-            const attendeeEmails = new Set<string>();
+            const attendeesByEmail = new Map<string, string>();
             for (const order of orders) {
                 for (const attendee of order.attendees) {
                     if (attendee.email) {
-                        attendeeEmails.add(attendee.email);
+                        attendeesByEmail.set(attendee.email, attendee.name);
                     }
                 }
             }
 
-            for (const email of attendeeEmails) {
+            for (const [email, name] of attendeesByEmail) {
                 emailQueue.add('event-cancellation', {
                     type: 'event-cancellation',
                     to: email,
@@ -715,9 +715,10 @@ export class ManageService {
                     reason,
                     refundPolicy,
                     eventImageUrl: event.coverImage,
+                    recipientName: name,
                 }).catch(err => console.error('Failed to queue cancellation email:', err));
             }
-            attendeesNotified = attendeeEmails.size;
+            attendeesNotified = attendeesByEmail.size;
         }
 
         return {
@@ -793,6 +794,7 @@ export class ManageService {
                         eventUrl,
                         organizerAvatarUrl: event.organizer.avatar,
                         organizerProfileUrl: event.organizer.username ? `https://eventfi.live/profile/${event.organizer.username}` : undefined,
+                        recipientName: attendee.name,
                     }).catch(err => console.error(`[BulkEmail] Failed to queue for ${attendee.email}:`, err))
                 )
             );

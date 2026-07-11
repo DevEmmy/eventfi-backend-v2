@@ -408,6 +408,7 @@ export class CommunityService {
                 chapterName: chapter?.name,
                 communityUrl,
                 communityImageUrl,
+                recipientName: targetUser.displayName || undefined,
             });
             EmailService.send(targetUser.email, template.subject, template.html, template.text).catch((err) =>
                 console.error('Failed to send community member added email:', err)

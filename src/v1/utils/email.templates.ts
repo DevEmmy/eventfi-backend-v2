@@ -129,11 +129,12 @@ export const EmailTemplates = {
     /**
      * Email Verification Template
      */
-    emailVerification: (verifyUrl: string) => ({
+    emailVerification: (verifyUrl: string, name?: string) => ({
         subject: 'Verify your EventFi email address',
         html: renderLayout({
             heading: 'Verify your email',
             bodyHtml: `
+                <p>Hi ${name || 'there'},</p>
                 <p>Thanks for signing up for EventFi! Please verify your email address by clicking the button below.</p>
                 <p>This link will expire in 24 hours. If you didn't create an account, you can safely ignore this email.</p>
                 <p style="font-size:12px; color:#999;">If the button doesn't work, copy and paste this URL: ${verifyUrl}</p>
@@ -141,7 +142,7 @@ export const EmailTemplates = {
             ctaLabel: 'Verify Email',
             ctaUrl: verifyUrl,
         }),
-        text: `Verify your EventFi email by visiting: ${verifyUrl}. This link expires in 24 hours.`
+        text: `Hi ${name || 'there'}, verify your EventFi email by visiting: ${verifyUrl}. This link expires in 24 hours.`
     }),
 
     /**
@@ -167,11 +168,12 @@ export const EmailTemplates = {
     /**
      * Password Reset Template
      */
-    passwordReset: (resetUrl: string) => ({
+    passwordReset: (resetUrl: string, name?: string) => ({
         subject: 'Reset your EventFi password 🔒',
         html: renderLayout({
             heading: 'Password Reset Request',
             bodyHtml: `
+                <p>Hi ${name || 'there'},</p>
                 <p>We received a request to reset your password for your EventFi account.</p>
                 <p>Click the button below to set a new password. This link will expire in 1 hour.</p>
                 <p>If you didn't request this, you can safely ignore this email.</p>
@@ -180,7 +182,7 @@ export const EmailTemplates = {
             ctaLabel: 'Reset Password',
             ctaUrl: resetUrl,
         }),
-        text: `Reset your EventFi password by visiting this link: ${resetUrl}. This link expires in 1 hour.`
+        text: `Hi ${name || 'there'}, reset your EventFi password by visiting this link: ${resetUrl}. This link expires in 1 hour.`
     }),
 
     /**
@@ -244,7 +246,7 @@ export const EmailTemplates = {
     /**
      * Event Cancellation Template
      */
-    eventCancellation: (data: { eventTitle: string, eventDate: string, reason?: string, refundPolicy: string, eventImageUrl?: string }) => ({
+    eventCancellation: (data: { eventTitle: string, eventDate: string, reason?: string, refundPolicy: string, eventImageUrl?: string, recipientName?: string }) => ({
         subject: `Event Cancelled: ${data.eventTitle}`,
         html: renderLayout({
             contextTitle: data.eventTitle,
@@ -252,6 +254,7 @@ export const EmailTemplates = {
             contextImageUrl: data.eventImageUrl,
             heading: 'Event Cancelled',
             bodyHtml: `
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>We're sorry to inform you that <strong>${data.eventTitle}</strong> scheduled for <strong>${data.eventDate}</strong> has been cancelled.</p>
                 ${data.reason ? `<p><strong>Reason:</strong> ${data.reason}</p>` : ''}
                 <div style="background-color:#f8fafc; padding:15px; border-radius:8px; margin:20px 0;">
@@ -261,13 +264,13 @@ export const EmailTemplates = {
                 <p>The EventFi Team</p>
             `,
         }),
-        text: `Event Cancelled: ${data.eventTitle} (${data.eventDate}). ${data.reason || ''} Refund: ${data.refundPolicy}. We apologize for any inconvenience.`
+        text: `Hi ${data.recipientName || 'there'}, Event Cancelled: ${data.eventTitle} (${data.eventDate}). ${data.reason || ''} Refund: ${data.refundPolicy}. We apologize for any inconvenience.`
     }),
 
     /**
      * Team Added Notification (for existing users added to a team)
      */
-    teamAdded: (data: { eventTitle: string, role: string, eventUrl: string, eventImageUrl?: string }) => ({
+    teamAdded: (data: { eventTitle: string, role: string, eventUrl: string, eventImageUrl?: string, recipientName?: string }) => ({
         subject: `You've been added to the team for ${data.eventTitle}`,
         html: renderLayout({
             contextTitle: data.eventTitle,
@@ -275,6 +278,7 @@ export const EmailTemplates = {
             contextUrl: data.eventUrl,
             heading: "You're on the Team!",
             bodyHtml: `
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>You've been added to the team for <strong>${data.eventTitle}</strong> as a <strong>${data.role}</strong>.</p>
                 <p>You can now manage this event from your dashboard.</p>
                 <p>The EventFi Team</p>
@@ -282,7 +286,7 @@ export const EmailTemplates = {
             ctaLabel: 'View Event',
             ctaUrl: data.eventUrl,
         }),
-        text: `You've been added to the team for ${data.eventTitle} as a ${data.role}. View the event at: ${data.eventUrl}`
+        text: `Hi ${data.recipientName || 'there'}, you've been added to the team for ${data.eventTitle} as a ${data.role}. View the event at: ${data.eventUrl}`
     }),
 
     /**
@@ -319,7 +323,7 @@ export const EmailTemplates = {
     /**
      * General Announcement (Organizer to Attendees)
      */
-    announcement: (data: { eventTitle: string, subject: string, content: string, organizerName: string, eventImageUrl?: string, eventUrl?: string, organizerAvatarUrl?: string, organizerProfileUrl?: string }) => ({
+    announcement: (data: { eventTitle: string, subject: string, content: string, organizerName: string, eventImageUrl?: string, eventUrl?: string, organizerAvatarUrl?: string, organizerProfileUrl?: string, recipientName?: string }) => ({
         subject: `[Update] ${data.eventTitle}: ${data.subject}`,
         html: renderLayout({
             contextTitle: data.eventTitle,
@@ -330,13 +334,14 @@ export const EmailTemplates = {
             hostProfileUrl: data.organizerProfileUrl,
             heading: data.subject,
             bodyHtml: `
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>${data.content.replace(/\n/g, '<br>')}</p>
             `,
             ctaLabel: data.eventUrl ? 'View Event' : undefined,
             ctaUrl: data.eventUrl,
             footerNote: `Sent by ${data.organizerName} via EventFi.`,
         }),
-        text: `${data.subject}\n\n${data.content}\n\nSent by ${data.organizerName} for ${data.eventTitle}`
+        text: `Hi ${data.recipientName || 'there'},\n\n${data.subject}\n\n${data.content}\n\nSent by ${data.organizerName} for ${data.eventTitle}`
     }),
 
     // ─── Payout emails ────────────────────────────────────────────────────────
@@ -408,12 +413,12 @@ export const EmailTemplates = {
 
     // ─── Installment payment emails ────────────────────────────────────────────
 
-    installmentReminder: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; dueDate: string; payUrl: string }) => ({
+    installmentReminder: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; dueDate: string; payUrl: string; recipientName?: string }) => ({
         subject: `Payment reminder: installment ${data.sequence}/${data.installmentCount} due for ${data.eventTitle}`,
         html: renderLayout({
             heading: 'Installment payment due soon',
             bodyHtml: `
-                <p>Hi there,</p>
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>Your next installment for <strong>${data.eventTitle}</strong> is coming up.</p>
                 <table style="width:100%; border-collapse:collapse; margin:16px 0;">
                     <tr><td style="padding:8px; color:#666;">Installment</td><td style="padding:8px; font-weight:bold;">${data.sequence} of ${data.installmentCount}</td></tr>
@@ -426,15 +431,15 @@ export const EmailTemplates = {
             ctaLabel: 'Pay now',
             ctaUrl: data.payUrl,
         }),
-        text: `Installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is due ${data.dueDate}: ${data.currency} ${data.amount.toLocaleString()}. Pay at: ${data.payUrl}`
+        text: `Hi ${data.recipientName || 'there'}, installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is due ${data.dueDate}: ${data.currency} ${data.amount.toLocaleString()}. Pay at: ${data.payUrl}`
     }),
 
-    installmentOverdue: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; graceDays: number; payUrl: string }) => ({
+    installmentOverdue: (data: { eventTitle: string; sequence: number; installmentCount: number; amount: number; currency: string; graceDays: number; payUrl: string; recipientName?: string }) => ({
         subject: `Overdue: installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle}`,
         html: renderLayout({
             heading: 'Installment payment overdue',
             bodyHtml: `
-                <p>Hi there,</p>
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>Installment <strong>${data.sequence} of ${data.installmentCount}</strong> for <strong>${data.eventTitle}</strong> is now overdue.</p>
                 <table style="width:100%; border-collapse:collapse; margin:16px 0;">
                     <tr><td style="padding:8px; color:#666;">Amount due</td><td style="padding:8px; font-weight:bold;">${data.currency} ${data.amount.toLocaleString()}</td></tr>
@@ -445,22 +450,22 @@ export const EmailTemplates = {
             ctaLabel: 'Pay now',
             ctaUrl: data.payUrl,
         }),
-        text: `Installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is overdue: ${data.currency} ${data.amount.toLocaleString()}. You have ${data.graceDays} day(s) left before cancellation. Pay at: ${data.payUrl}`
+        text: `Hi ${data.recipientName || 'there'}, installment ${data.sequence}/${data.installmentCount} for ${data.eventTitle} is overdue: ${data.currency} ${data.amount.toLocaleString()}. You have ${data.graceDays} day(s) left before cancellation. Pay at: ${data.payUrl}`
     }),
 
-    installmentDefaulted: (data: { eventTitle: string }) => ({
+    installmentDefaulted: (data: { eventTitle: string; recipientName?: string }) => ({
         subject: `Your installment plan for ${data.eventTitle} was cancelled`,
         html: renderLayout({
             heading: 'Installment plan cancelled',
             bodyHtml: `
-                <p>Hi there,</p>
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>Your installment plan for <strong>${data.eventTitle}</strong> has been cancelled after a missed payment past the grace period.</p>
                 <p>Your reserved tickets have been released back to the event. Amounts already paid are non-refundable.</p>
                 <p>If you'd still like to attend, you can book again from the event page.</p>
                 <p>The EventFi Team</p>
             `,
         }),
-        text: `Your installment plan for ${data.eventTitle} was cancelled after a missed payment. Reserved tickets have been released. Amounts already paid are non-refundable.`
+        text: `Hi ${data.recipientName || 'there'}, your installment plan for ${data.eventTitle} was cancelled after a missed payment. Reserved tickets have been released. Amounts already paid are non-refundable.`
     }),
 
     // ─── Community emails ──────────────────────────────────────────────────────
@@ -493,7 +498,7 @@ export const EmailTemplates = {
     /**
      * Community Member Added Notification (for existing users added directly to a community)
      */
-    communityMemberAdded: (data: { communityName: string, role: string, chapterName?: string, communityUrl: string, communityImageUrl?: string, ownerName?: string, ownerAvatarUrl?: string, ownerProfileUrl?: string }) => ({
+    communityMemberAdded: (data: { communityName: string, role: string, chapterName?: string, communityUrl: string, communityImageUrl?: string, ownerName?: string, ownerAvatarUrl?: string, ownerProfileUrl?: string, recipientName?: string }) => ({
         subject: `You've been added to ${data.communityName}`,
         html: renderLayout({
             contextTitle: data.communityName,
@@ -504,6 +509,7 @@ export const EmailTemplates = {
             hostProfileUrl: data.ownerProfileUrl,
             heading: "You're part of the team!",
             bodyHtml: `
+                <p>Hi ${data.recipientName || 'there'},</p>
                 <p>You've been added to <strong>${data.communityName}</strong> as ${data.chapterName ? `the <strong>${data.role}</strong> for <strong>${data.chapterName}</strong>` : `an <strong>${data.role}</strong>`}.</p>
                 <p>You can now manage this community from your dashboard.</p>
                 <p>The EventFi Team</p>
@@ -511,6 +517,6 @@ export const EmailTemplates = {
             ctaLabel: 'View Community',
             ctaUrl: data.communityUrl,
         }),
-        text: `You've been added to ${data.communityName} as ${data.chapterName ? `${data.role} for ${data.chapterName}` : data.role}. View it at: ${data.communityUrl}`
+        text: `Hi ${data.recipientName || 'there'}, you've been added to ${data.communityName} as ${data.chapterName ? `${data.role} for ${data.chapterName}` : data.role}. View it at: ${data.communityUrl}`
     }),
 };

@@ -83,6 +83,7 @@ async function sendUpcomingReminders() {
                 currency: order.currency,
                 dueDate: dueDateStr,
                 payUrl,
+                name: recipient.name,
             }).catch((err: unknown) => console.error('[InstallmentScheduler] Failed to queue reminder email:', err));
         }
 
@@ -141,6 +142,7 @@ async function flagOverdue() {
                 currency: order.currency,
                 graceDays: GRACE_DAYS,
                 payUrl,
+                name: recipient.name,
             }).catch((err: unknown) => console.error('[InstallmentScheduler] Failed to queue overdue email:', err));
         }
     }
