@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { ManageController } from '../controllers/manage.controller';
 import { ImportController, csvUploadMiddleware } from '../controllers/import.controller';
 import { authenticate } from '../middlewares/auth.middleware';
+import { validate } from '../middlewares/validate.middleware';
+import { addAttendeeSchema } from '../validations/manage.schema';
 
 const router = Router();
 
@@ -14,6 +16,7 @@ router.get('/:eventId/revenue/export', authenticate, ManageController.exportReve
 
 // Attendee management
 router.get('/:eventId/attendees', authenticate, ManageController.getAttendees);
+router.post('/:eventId/attendees', authenticate, validate(addAttendeeSchema), ManageController.addAttendee);
 router.post('/:eventId/attendees/:attendeeId/check-in', authenticate, ManageController.checkInAttendee);
 router.post('/:eventId/attendees/email', authenticate, ManageController.sendBulkEmail);
 router.post('/:eventId/attendees/sms', authenticate, ManageController.sendBulkSms);

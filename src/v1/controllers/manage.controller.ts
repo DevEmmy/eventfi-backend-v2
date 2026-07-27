@@ -82,6 +82,32 @@ export class ManageController {
     }
 
     /**
+     * POST /events/:eventId/attendees - Manually register an attendee who didn't book online
+     */
+    static async addAttendee(req: Request, res: Response) {
+        try {
+            const userId = (req as any).user.id;
+            const { eventId } = req.params;
+            const { ticketTypeId, name, email, phone } = req.body;
+
+            const data = await ManageService.addAttendee(eventId, userId, { ticketTypeId, name, email, phone });
+
+            return res.status(201).json({
+                status: 'success',
+                data
+            });
+        } catch (error: any) {
+            const statusCode = error.message.includes('not found') ? 404 :
+                error.message.includes('Not enough tickets') ? 400 :
+                    error.message.includes('Unauthorized') || error.message.includes('permissions') ? 403 : 500;
+            return res.status(statusCode).json({
+                status: 'error',
+                message: error.message || 'Failed to add attendee'
+            });
+        }
+    }
+
+    /**
      * GET /events/:eventId/attendees/export - Export attendees as CSV
      */
     static async exportAttendees(req: Request, res: Response) {

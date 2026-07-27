@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { v4 as uuidv4 } from 'uuid';
 import { emailQueue } from '../jobs/email.queue';
 import { smsQueue } from '../jobs/sms.queue';
 import redis from '../config/redis';
@@ -417,6 +418,142 @@ export class ManageService {
             page,
             limit,
             totalPages: Math.ceil(total / limit)
+        };
+    }
+
+    /**
+     * Manually register an attendee who didn't book online (walk-in, phone/in-person signup, etc.).
+     * Creates a pre-confirmed order the same way the CSV import does — payment is skipped/comped
+     * regardless of the ticket's price, since the organizer is vouching for this attendee directly.
+     */
+    static async addAttendee(
+        eventId: string,
+        organizerId: string,
+        input: { ticketTypeId: string; name: string; email: string; phone?: string }
+    ) {
+        await this.checkEventAccess(organizerId, eventId, 'canManageAttendees');
+
+        const ticket = await prisma.ticket.findFirst({
+            where: { id: input.ticketTypeId, eventId }
+        });
+        if (!ticket) throw new Error('Ticket not found for this event');
+        if (ticket.remaining < 1) throw new Error(`Not enough tickets available for ${ticket.name}`);
+
+        const email = input.email.toLowerCase().trim();
+        const userId = await resolveManualAttendeeUserId(email, input.name);
+        const ticketCode = `EVF-TKT-${uuidv4().substring(0, 8).toUpperCase()}`;
+
+        const attendee = await prisma.$transaction(async (tx) => {
+            const order = await tx.bookingOrder.create({
+                data: {
+                    userId,
+                    eventId,
+                    subtotal: ticket.price,
+                    serviceFee: 0,
+                    total: ticket.price,
+                    currency: ticket.currency,
+                    status: 'CONFIRMED',
+                    paymentStatus: 'COMPLETED',
+                    paymentMethod: 'manual',
+                    paymentReference: `manual_${uuidv4().substring(0, 8)}`,
+                    paidAt: new Date(),
+                    confirmedAt: new Date(),
+                    items: {
+                        create: {
+                            ticketId: ticket.id,
+                            ticketName: ticket.name,
+                            quantity: 1,
+                            unitPrice: ticket.price,
+                            totalPrice: ticket.price,
+                        },
+                    },
+                },
+                select: { id: true },
+            });
+
+            const createdAttendee = await tx.attendee.create({
+                data: {
+                    orderId: order.id,
+                    ticketId: ticket.id,
+                    name: input.name,
+                    email,
+                    phone: input.phone || null,
+                    ticketCode,
+                    status: 'valid',
+                },
+            });
+
+            await tx.userTicket.create({
+                data: {
+                    userId,
+                    ticketId: ticket.id,
+                    eventId,
+                    quantity: 1,
+                    status: 'valid',
+                    qrCode: ticketCode,
+                },
+            });
+
+            await tx.ticket.update({
+                where: { id: ticket.id },
+                data: { remaining: { decrement: 1 } },
+            });
+
+            await tx.event.update({
+                where: { id: eventId },
+                data: { attendeesCount: { increment: 1 } },
+            });
+
+            return createdAttendee;
+        });
+
+        // Queue the same ticket-confirmation email a normal buyer would get
+        try {
+            const event = await prisma.event.findUnique({
+                where: { id: eventId },
+                select: {
+                    title: true, slug: true, startDate: true, venueName: true, address: true, city: true, coverImage: true,
+                    organizer: { select: { displayName: true, username: true, avatar: true } },
+                }
+            });
+            if (event) {
+                const eventDate = new Date(event.startDate).toLocaleDateString('en-US', {
+                    weekday: 'long', month: 'long', day: 'numeric', year: 'numeric'
+                });
+                const venue = event.venueName || event.address || event.city || 'TBA';
+                const eventUrl = event.slug ? `https://eventfi.live/${event.slug}` : undefined;
+
+                emailQueue.add('ticket-confirmation', {
+                    type: 'ticket-confirmation',
+                    to: attendee.email,
+                    eventTitle: event.title,
+                    userTitle: attendee.name,
+                    startDate: eventDate,
+                    venue,
+                    eventImageUrl: event.coverImage,
+                    eventUrl,
+                    organizerName: event.organizer?.displayName,
+                    organizerAvatarUrl: event.organizer?.avatar,
+                    organizerProfileUrl: event.organizer?.username ? `https://eventfi.live/profile/${event.organizer.username}` : undefined,
+                }).catch(err => console.error('Failed to queue ticket confirmation email:', err));
+            }
+        } catch (error) {
+            console.error('Failed to queue ticket confirmation email for manually added attendee:', error);
+        }
+
+        return {
+            id: attendee.id,
+            name: attendee.name,
+            email: attendee.email,
+            phone: attendee.phone || '',
+            ticketTypeId: attendee.ticketId,
+            ticketTypeName: ticket.name,
+            ticketPrice: ticket.price,
+            purchaseDate: attendee.createdAt.toISOString(),
+            status: 'not_checked_in',
+            checkInTime: null,
+            orderId: attendee.orderId,
+            ticketCode: attendee.ticketCode
         };
     }
 
@@ -893,6 +1030,31 @@ export class ManageService {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Resolve a userId for a manually-added attendee, mirroring the guest-checkout /
+ * CSV-import pattern: reuse the account if the email already exists, otherwise
+ * create a locked guest account (empty passwordHash) claimable later via password reset.
+ */
+async function resolveManualAttendeeUserId(email: string, displayName: string): Promise<string> {
+    const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } });
+    if (existing) return existing.id;
+
+    const base = email.split('@')[0].replace(/[^a-z0-9]/gi, '').toLowerCase().substring(0, 16);
+    const suffix = Math.random().toString(36).substring(2, 7);
+    const username = `${base}_${suffix}`;
+
+    const guest = await prisma.user.create({
+        data: {
+            email,
+            username,
+            displayName: displayName || email.split('@')[0],
+            passwordHash: '',
+        },
+        select: { id: true },
+    });
+    return guest.id;
+}
 
 function buildReminderSms(event: {
     title: string;
