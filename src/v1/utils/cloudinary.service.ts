@@ -16,7 +16,7 @@ cloudinary.config({
     secure: true,
 });
 
-export type CloudinaryFolder = 'avatars' | 'events' | 'gallery';
+export type CloudinaryFolder = 'avatars' | 'events' | 'gallery' | 'vendors' | 'communities' | 'reviews' | 'community-posts';
 
 export class CloudinaryService {
     /**
@@ -68,6 +68,23 @@ export class CloudinaryService {
 
         // Already a remote URL — return as-is
         return value;
+    }
+
+    /**
+     * Convenience helper: run `ensureCloudinaryUrl` over an array of values
+     * (e.g. a gallery/portfolio field), uploading only the base64 entries.
+     * When `publicIdPrefix` is given, each item gets a stable `${prefix}_${index}` ID.
+     */
+    static async ensureCloudinaryUrls(
+        values: string[],
+        folder: CloudinaryFolder,
+        publicIdPrefix?: string,
+    ): Promise<string[]> {
+        return Promise.all(
+            values.map((v, i) =>
+                this.ensureCloudinaryUrl(v, folder, publicIdPrefix ? `${publicIdPrefix}_${i}` : undefined),
+            ),
+        );
     }
 
     /**

@@ -1,6 +1,7 @@
 import { prisma } from '../config/database';
 import { CommunityAccessService } from './communityAccess.service';
 import { NotificationService } from './notification.service';
+import { CloudinaryService } from '../utils/cloudinary.service';
 
 const USER_SELECT = { id: true, displayName: true, email: true, avatar: true } as const;
 
@@ -39,12 +40,16 @@ export class CommunityPostService {
     static async createPost(userId: string, communityId: string, data: CreatePostData) {
         await CommunityAccessService.requireParticipant(userId, communityId);
 
+        const images = data.images?.length
+            ? await CloudinaryService.ensureCloudinaryUrls(data.images, 'community-posts', `community_post_${communityId}_${userId}_${Date.now()}`)
+            : (data.images ?? []);
+
         const post = await prisma.communityPost.create({
             data: {
                 communityId,
                 authorId: userId,
                 content: data.content,
-                images: data.images ?? [],
+                images,
             },
             include: {
                 author: { select: USER_SELECT },

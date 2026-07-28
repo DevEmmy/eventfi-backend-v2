@@ -1,5 +1,6 @@
 import { prisma } from '../config/database';
 import { VendorCategory, VendorAvailability, VendorBookingStatus } from '@prisma/client';
+import { CloudinaryService } from '../utils/cloudinary.service';
 
 interface CreateVendorData {
     userId: string;
@@ -78,15 +79,23 @@ export class VendorService {
         });
         if (existing) throw new Error('You already have a vendor profile');
 
+        // Upload any base64 images to Cloudinary before persisting — never store raw base64 in the DB.
+        const stamp = Date.now();
+        const [logo, coverImage, portfolio] = await Promise.all([
+            data.logo ? CloudinaryService.ensureCloudinaryUrl(data.logo, 'vendors', `vendor_logo_${data.userId}_${stamp}`) : undefined,
+            data.coverImage ? CloudinaryService.ensureCloudinaryUrl(data.coverImage, 'vendors', `vendor_cover_${data.userId}_${stamp}`) : undefined,
+            data.portfolio ? CloudinaryService.ensureCloudinaryUrls(data.portfolio, 'vendors', `vendor_portfolio_${data.userId}_${stamp}`) : [],
+        ]);
+
         const vendor = await prisma.vendor.create({
             data: {
                 userId: data.userId,
                 name: data.name,
                 category: data.category,
                 description: data.description,
-                logo: data.logo,
-                coverImage: data.coverImage,
-                portfolio: data.portfolio || [],
+                logo,
+                coverImage,
+                portfolio,
                 specialties: data.specialties || [],
                 location: data.location,
                 address: data.address,
@@ -123,9 +132,21 @@ export class VendorService {
         if (!vendor) throw new Error('Vendor not found');
         if (vendor.userId !== userId) throw new Error('Unauthorized');
 
+        // Upload any base64 images to Cloudinary before persisting — never store raw base64 in the DB.
+        const [logo, coverImage, portfolio] = await Promise.all([
+            data.logo !== undefined ? CloudinaryService.ensureCloudinaryUrl(data.logo, 'vendors', `vendor_logo_${vendorId}`) : undefined,
+            data.coverImage !== undefined ? CloudinaryService.ensureCloudinaryUrl(data.coverImage, 'vendors', `vendor_cover_${vendorId}`) : undefined,
+            data.portfolio !== undefined ? CloudinaryService.ensureCloudinaryUrls(data.portfolio, 'vendors', `vendor_portfolio_${vendorId}`) : undefined,
+        ]);
+
         return prisma.vendor.update({
             where: { id: vendorId },
-            data,
+            data: {
+                ...data,
+                ...(logo !== undefined && { logo }),
+                ...(coverImage !== undefined && { coverImage }),
+                ...(portfolio !== undefined && { portfolio }),
+            },
             include: {
                 user: { select: { id: true, displayName: true, avatar: true, isVerified: true } },
             },
@@ -257,8 +278,12 @@ export class VendorService {
         if (!vendor) throw new Error('Vendor not found');
         if (vendor.userId === userId) throw new Error('You cannot review your own vendor profile');
 
+        const uploadedPhotos = photos.length
+            ? await CloudinaryService.ensureCloudinaryUrls(photos, 'reviews', `vendor_review_${vendorId}_${userId}_${Date.now()}`)
+            : photos;
+
         const review = await prisma.vendorReview.create({
-            data: { vendorId, userId, rating, comment, photos },
+            data: { vendorId, userId, rating, comment, photos: uploadedPhotos },
         });
 
         // Update vendor's average rating

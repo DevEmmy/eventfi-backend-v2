@@ -1,4 +1,5 @@
 import { prisma } from '../config/database';
+import { CloudinaryService } from '../utils/cloudinary.service';
 
 export class ReviewService {
     static async getReviews(eventId: string, page: number = 1, limit: number = 10) {
@@ -85,6 +86,10 @@ export class ReviewService {
             throw new Error('You have already reviewed this event');
         }
 
+        const photos = data.photos?.length
+            ? await CloudinaryService.ensureCloudinaryUrls(data.photos, 'reviews', `event_review_${eventId}_${userId}_${Date.now()}`)
+            : (data.photos || []);
+
         const review = await prisma.review.create({
             data: {
                 eventId,
@@ -92,7 +97,7 @@ export class ReviewService {
                 rating: data.rating,
                 title: data.title,
                 comment: data.comment,
-                photos: data.photos || [],
+                photos,
             },
             include: {
                 user: {

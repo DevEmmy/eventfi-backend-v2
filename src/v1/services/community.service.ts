@@ -6,6 +6,7 @@ import { EmailService } from './email.service';
 import { EmailTemplates } from '../utils/email.templates';
 import { NotificationService } from './notification.service';
 import { slugify } from '../utils/slugify';
+import { CloudinaryService } from '../utils/cloudinary.service';
 
 const USER_SELECT = { id: true, displayName: true, email: true, avatar: true } as const;
 const CHAPTER_SELECT = { id: true, name: true, slug: true } as const;
@@ -54,13 +55,20 @@ export class CommunityService {
             slug = `${baseSlug}-${counter++}`;
         }
 
+        // Upload any base64 images to Cloudinary before persisting — never store raw base64 in the DB.
+        const stamp = Date.now();
+        const [logo, bannerImage] = await Promise.all([
+            data.logo ? CloudinaryService.ensureCloudinaryUrl(data.logo, 'communities', `community_logo_${userId}_${stamp}`) : undefined,
+            data.bannerImage ? CloudinaryService.ensureCloudinaryUrl(data.bannerImage, 'communities', `community_banner_${userId}_${stamp}`) : undefined,
+        ]);
+
         return prisma.community.create({
             data: {
                 name: data.name,
                 slug,
                 description: data.description,
-                logo: data.logo,
-                bannerImage: data.bannerImage,
+                logo,
+                bannerImage,
                 ownerId: userId,
                 members: {
                     create: { userId, email: user.email, role: 'OWNER', status: 'ACTIVE' },
@@ -249,9 +257,19 @@ export class CommunityService {
     static async updateCommunity(userId: string, communityId: string, data: Partial<CreateCommunityData>) {
         await CommunityAccessService.checkAccess(userId, communityId, { minRole: 'ADMIN' });
 
+        // Upload any base64 images to Cloudinary before persisting — never store raw base64 in the DB.
+        const [logo, bannerImage] = await Promise.all([
+            data.logo !== undefined ? CloudinaryService.ensureCloudinaryUrl(data.logo, 'communities', `community_logo_${communityId}`) : undefined,
+            data.bannerImage !== undefined ? CloudinaryService.ensureCloudinaryUrl(data.bannerImage, 'communities', `community_banner_${communityId}`) : undefined,
+        ]);
+
         return prisma.community.update({
             where: { id: communityId },
-            data,
+            data: {
+                ...data,
+                ...(logo !== undefined && { logo }),
+                ...(bannerImage !== undefined && { bannerImage }),
+            },
             include: { chapters: true },
         });
     }

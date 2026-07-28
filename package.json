@@ -12,7 +12,10 @@
     "prisma:studio": "prisma studio",
     "seed:palette": "ts-node scripts/seed-color-palette.ts",
     "seed:palette:all": "ts-node scripts/seed-color-palette.ts --all",
-    "seed:palette:dry": "ts-node scripts/seed-color-palette.ts --all --dry-run"
+    "seed:palette:dry": "ts-node scripts/seed-color-palette.ts --all --dry-run",
+    "migrate:media": "ts-node scripts/migrate-media-to-cloudinary.ts",
+    "migrate:media:dry": "ts-node scripts/migrate-media-to-cloudinary.ts --dry-run",
+    "migrate:media:list": "ts-node scripts/migrate-media-to-cloudinary.ts --list"
   },
   "keywords": [],
   "author": "",

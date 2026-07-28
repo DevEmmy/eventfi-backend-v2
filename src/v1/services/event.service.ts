@@ -629,9 +629,13 @@ export class EventService {
             if (!tm || tm.role !== 'CO_HOST') throw new Error('Unauthorized');
         }
 
+        const avatar = data.avatar
+            ? await CloudinaryService.ensureCloudinaryUrl(data.avatar, 'avatars', `speaker_${eventId}_${Date.now()}`)
+            : data.avatar;
+
         const count = await prisma.eventSpeaker.count({ where: { eventId } });
         return prisma.eventSpeaker.create({
-            data: { ...data, eventId, order: data.order ?? count },
+            data: { ...data, avatar, eventId, order: data.order ?? count },
         });
     }
 
@@ -652,7 +656,14 @@ export class EventService {
             if (!tm || tm.role !== 'CO_HOST') throw new Error('Unauthorized');
         }
 
-        return prisma.eventSpeaker.update({ where: { id: speakerId }, data });
+        const avatar = data.avatar !== undefined
+            ? await CloudinaryService.ensureCloudinaryUrl(data.avatar, 'avatars', `speaker_${speakerId}`)
+            : undefined;
+
+        return prisma.eventSpeaker.update({
+            where: { id: speakerId },
+            data: { ...data, ...(avatar !== undefined && { avatar }) },
+        });
     }
 
     static async deleteSpeaker(speakerId: string, userId: string) {
