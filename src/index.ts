@@ -88,8 +88,8 @@ const gracefulShutdown = (signal: NodeJS.Signals) => {
         await Promise.all([
           disconnectDatabase(),
           disconnectRedis(),
-          emailWorker.close(),
-          smsWorker.close(),
+          emailWorker?.close(),
+          smsWorker?.close(),
         ]);
       } catch (shutdownError) {
         console.error('Error during shutdown', shutdownError);
@@ -109,10 +109,12 @@ const bootstrap = async () => {
     server.listen(port);
     startReminderScheduler();
     startInstallmentScheduler();
-    console.log(`📧 Email worker active (concurrency: ${emailWorker.concurrency})`);
-    console.log(`📬 Email queue ready: ${emailQueue.name}`);
-    console.log(`📱 SMS worker active (concurrency: ${smsWorker.concurrency})`);
-    console.log(`📬 SMS queue ready: ${smsQueue.name}`);
+    if (emailWorker && smsWorker) {
+      console.log(`📧 Email worker active (concurrency: ${emailWorker.concurrency})`);
+      console.log(`📬 Email queue ready: ${emailQueue.name}`);
+      console.log(`📱 SMS worker active (concurrency: ${smsWorker.concurrency})`);
+      console.log(`📬 SMS queue ready: ${smsQueue.name}`);
+    }
   } catch (error) {
     console.error('Failed to bootstrap services', error);
     process.exit(1);

@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { EMAIL_QUEUE_NAME } from './email.queue';
+import { REDIS_ENABLED } from '../config/redis';
 import { EmailService } from '../services/email.service';
 import { EmailTemplates } from '../utils/email.templates';
 
@@ -31,185 +32,188 @@ interface EmailJobData {
     [key: string]: any;
 }
 
-export const emailWorker = new Worker<EmailJobData>(
-    EMAIL_QUEUE_NAME,
-    async (job: Job<EmailJobData>) => {
-        const { type, to, ...data } = job.data;
+export async function processEmailJob(job: Job<EmailJobData>) {
+    const { type, to, ...data } = job.data;
 
-        console.log(`[EmailWorker] Processing job ${job.id} of type ${type} to ${to}`);
+    console.log(`[EmailWorker] Processing job ${job.id} of type ${type} to ${to}`);
 
-        try {
-            switch (type) {
-                case 'welcome': {
-                    const template = EmailTemplates.welcome(data.name);
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'password-reset': {
-                    const template = EmailTemplates.passwordReset(data.resetUrl, data.name);
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'ticket-confirmation': {
-                    const template = EmailTemplates.ticketConfirmation({
-                        eventTitle: data.eventTitle,
-                        userTitle: data.userTitle,
-                        qrCodeUrl: data.qrCodeUrl,
-                        startDate: data.startDate,
-                        venue: data.venue,
-                        eventImageUrl: data.eventImageUrl,
-                        eventUrl: data.eventUrl,
-                        organizerName: data.organizerName,
-                        organizerAvatarUrl: data.organizerAvatarUrl,
-                        organizerProfileUrl: data.organizerProfileUrl,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'announcement': {
-                    const template = EmailTemplates.announcement({
-                        eventTitle: data.eventTitle,
-                        subject: data.subject,
-                        content: data.content,
-                        organizerName: data.organizerName,
-                        eventImageUrl: data.eventImageUrl,
-                        eventUrl: data.eventUrl,
-                        organizerAvatarUrl: data.organizerAvatarUrl,
-                        organizerProfileUrl: data.organizerProfileUrl,
-                        recipientName: data.recipientName,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'team-invitation': {
-                    const template = EmailTemplates.teamInvitation({
-                        eventTitle: data.eventTitle,
-                        role: data.role,
-                        inviteUrl: data.inviteUrl,
-                        eventImageUrl: data.eventImageUrl,
-                        eventUrl: data.eventUrl,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'event-cancellation': {
-                    const template = EmailTemplates.eventCancellation({
-                        eventTitle: data.eventTitle,
-                        eventDate: data.eventDate,
-                        reason: data.reason,
-                        refundPolicy: data.refundPolicy,
-                        eventImageUrl: data.eventImageUrl,
-                        recipientName: data.recipientName,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'email-verification': {
-                    const template = EmailTemplates.emailVerification(data.verifyUrl, data.name);
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'payout-requested': {
-                    const template = EmailTemplates.payoutRequested({
-                        name: data.name,
-                        eventTitle: data.eventTitle,
-                        netAmount: data.netAmount,
-                        currency: data.currency,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'payout-approved': {
-                    const template = EmailTemplates.payoutApproved({
-                        name: data.name,
-                        netAmount: data.netAmount,
-                        currency: data.currency,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'payout-rejected': {
-                    const template = EmailTemplates.payoutRejected({
-                        name: data.name,
-                        reason: data.reason,
-                        currency: data.currency,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'payout-completed': {
-                    const template = EmailTemplates.payoutCompleted({
-                        name: data.name,
-                        netAmount: data.netAmount,
-                        currency: data.currency,
-                        paymentReference: data.paymentReference,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'installment-reminder': {
-                    const template = EmailTemplates.installmentReminder({
-                        eventTitle: data.eventTitle,
-                        sequence: data.sequence,
-                        installmentCount: data.installmentCount,
-                        amount: data.amount,
-                        currency: data.currency,
-                        dueDate: data.dueDate,
-                        payUrl: data.payUrl,
-                        recipientName: data.name,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'installment-overdue': {
-                    const template = EmailTemplates.installmentOverdue({
-                        eventTitle: data.eventTitle,
-                        sequence: data.sequence,
-                        installmentCount: data.installmentCount,
-                        amount: data.amount,
-                        currency: data.currency,
-                        graceDays: data.graceDays,
-                        payUrl: data.payUrl,
-                        recipientName: data.name,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                case 'installment-defaulted': {
-                    const template = EmailTemplates.installmentDefaulted({
-                        eventTitle: data.eventTitle,
-                        recipientName: data.name,
-                        currency: data.currency,
-                        depositAmount: data.depositAmount,
-                        refundedAmount: data.refundedAmount,
-                    });
-                    await EmailService.send(to, template.subject, template.html, template.text);
-                    break;
-                }
-
-                default:
-                    console.warn(`[EmailWorker] Unknown job type: ${type}`);
+    try {
+        switch (type) {
+            case 'welcome': {
+                const template = EmailTemplates.welcome(data.name);
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
             }
 
-            console.log(`[EmailWorker] Job ${job.id} completed`);
-        } catch (error) {
-            console.error(`[EmailWorker] Job ${job.id} failed`, error);
-            throw error;
+            case 'password-reset': {
+                const template = EmailTemplates.passwordReset(data.resetUrl, data.name);
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'ticket-confirmation': {
+                const template = EmailTemplates.ticketConfirmation({
+                    eventTitle: data.eventTitle,
+                    userTitle: data.userTitle,
+                    qrCodeUrl: data.qrCodeUrl,
+                    startDate: data.startDate,
+                    venue: data.venue,
+                    eventImageUrl: data.eventImageUrl,
+                    eventUrl: data.eventUrl,
+                    organizerName: data.organizerName,
+                    organizerAvatarUrl: data.organizerAvatarUrl,
+                    organizerProfileUrl: data.organizerProfileUrl,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'announcement': {
+                const template = EmailTemplates.announcement({
+                    eventTitle: data.eventTitle,
+                    subject: data.subject,
+                    content: data.content,
+                    organizerName: data.organizerName,
+                    eventImageUrl: data.eventImageUrl,
+                    eventUrl: data.eventUrl,
+                    organizerAvatarUrl: data.organizerAvatarUrl,
+                    organizerProfileUrl: data.organizerProfileUrl,
+                    recipientName: data.recipientName,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'team-invitation': {
+                const template = EmailTemplates.teamInvitation({
+                    eventTitle: data.eventTitle,
+                    role: data.role,
+                    inviteUrl: data.inviteUrl,
+                    eventImageUrl: data.eventImageUrl,
+                    eventUrl: data.eventUrl,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'event-cancellation': {
+                const template = EmailTemplates.eventCancellation({
+                    eventTitle: data.eventTitle,
+                    eventDate: data.eventDate,
+                    reason: data.reason,
+                    refundPolicy: data.refundPolicy,
+                    eventImageUrl: data.eventImageUrl,
+                    recipientName: data.recipientName,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'email-verification': {
+                const template = EmailTemplates.emailVerification(data.verifyUrl, data.name);
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'payout-requested': {
+                const template = EmailTemplates.payoutRequested({
+                    name: data.name,
+                    eventTitle: data.eventTitle,
+                    netAmount: data.netAmount,
+                    currency: data.currency,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'payout-approved': {
+                const template = EmailTemplates.payoutApproved({
+                    name: data.name,
+                    netAmount: data.netAmount,
+                    currency: data.currency,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'payout-rejected': {
+                const template = EmailTemplates.payoutRejected({
+                    name: data.name,
+                    reason: data.reason,
+                    currency: data.currency,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'payout-completed': {
+                const template = EmailTemplates.payoutCompleted({
+                    name: data.name,
+                    netAmount: data.netAmount,
+                    currency: data.currency,
+                    paymentReference: data.paymentReference,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'installment-reminder': {
+                const template = EmailTemplates.installmentReminder({
+                    eventTitle: data.eventTitle,
+                    sequence: data.sequence,
+                    installmentCount: data.installmentCount,
+                    amount: data.amount,
+                    currency: data.currency,
+                    dueDate: data.dueDate,
+                    payUrl: data.payUrl,
+                    recipientName: data.name,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'installment-overdue': {
+                const template = EmailTemplates.installmentOverdue({
+                    eventTitle: data.eventTitle,
+                    sequence: data.sequence,
+                    installmentCount: data.installmentCount,
+                    amount: data.amount,
+                    currency: data.currency,
+                    graceDays: data.graceDays,
+                    payUrl: data.payUrl,
+                    recipientName: data.name,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            case 'installment-defaulted': {
+                const template = EmailTemplates.installmentDefaulted({
+                    eventTitle: data.eventTitle,
+                    recipientName: data.name,
+                    currency: data.currency,
+                    depositAmount: data.depositAmount,
+                    refundedAmount: data.refundedAmount,
+                });
+                await EmailService.send(to, template.subject, template.html, template.text);
+                break;
+            }
+
+            default:
+                console.warn(`[EmailWorker] Unknown job type: ${type}`);
         }
-    },
+
+        console.log(`[EmailWorker] Job ${job.id} completed`);
+    } catch (error) {
+        console.error(`[EmailWorker] Job ${job.id} failed`, error);
+        throw error;
+    }
+}
+
+// Only run a BullMQ worker when Redis is on; otherwise email.queue calls processEmailJob directly
+export const emailWorker = !REDIS_ENABLED ? null : new Worker<EmailJobData>(
+    EMAIL_QUEUE_NAME,
+    processEmailJob,
     {
         connection,
         concurrency: 2,
@@ -220,10 +224,10 @@ export const emailWorker = new Worker<EmailJobData>(
     }
 );
 
-emailWorker.on('completed', (job) => {
+emailWorker?.on('completed', (job) => {
     console.log(`[EmailWorker] Job ${job.id} has completed!`);
 });
 
-emailWorker.on('failed', (job, err) => {
+emailWorker?.on('failed', (job, err) => {
     console.log(`[EmailWorker] Job ${job?.id} has failed with ${err.message}`);
 });

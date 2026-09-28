@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { SMS_QUEUE_NAME } from './sms.queue';
+import { REDIS_ENABLED } from '../config/redis';
 import { MultitexterService } from '../services/sms.service';
 
 function buildConnection() {
@@ -30,24 +31,27 @@ interface SmsJobData {
     message: string;
 }
 
-export const smsWorker = new Worker<SmsJobData>(
-    SMS_QUEUE_NAME,
-    async (job: Job<SmsJobData>) => {
-        const { type, recipients, message } = job.data;
+export async function processSmsJob(job: Job<SmsJobData>) {
+    const { type, recipients, message } = job.data;
 
-        console.log(`[SmsWorker] Processing job ${job.id} of type ${type} to ${recipients.length} recipient(s)`);
+    console.log(`[SmsWorker] Processing job ${job.id} of type ${type} to ${recipients.length} recipient(s)`);
 
-        try {
-            const sent = await MultitexterService.sendBulk(recipients, message);
-            if (!sent) {
-                throw new Error('Multitexter send returned failure');
-            }
-            console.log(`[SmsWorker] Job ${job.id} completed`);
-        } catch (error) {
-            console.error(`[SmsWorker] Job ${job.id} failed`, error);
-            throw error;
+    try {
+        const sent = await MultitexterService.sendBulk(recipients, message);
+        if (!sent) {
+            throw new Error('Multitexter send returned failure');
         }
-    },
+        console.log(`[SmsWorker] Job ${job.id} completed`);
+    } catch (error) {
+        console.error(`[SmsWorker] Job ${job.id} failed`, error);
+        throw error;
+    }
+}
+
+// Only run a BullMQ worker when Redis is on; otherwise sms.queue calls processSmsJob directly
+export const smsWorker = !REDIS_ENABLED ? null : new Worker<SmsJobData>(
+    SMS_QUEUE_NAME,
+    processSmsJob,
     {
         connection,
         concurrency: 3,
@@ -58,10 +62,10 @@ export const smsWorker = new Worker<SmsJobData>(
     }
 );
 
-smsWorker.on('completed', (job) => {
+smsWorker?.on('completed', (job) => {
     console.log(`[SmsWorker] Job ${job.id} has completed!`);
 });
 
-smsWorker.on('failed', (job, err) => {
+smsWorker?.on('failed', (job, err) => {
     console.log(`[SmsWorker] Job ${job?.id} has failed with ${err.message}`);
 });
