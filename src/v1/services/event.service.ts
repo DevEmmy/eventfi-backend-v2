@@ -550,7 +550,7 @@ export class EventService {
 
         // If location was just revealed, email all registered attendees
         if (locationJustRevealed) {
-            const orders = await prisma.order.findMany({
+            const orders = await prisma.bookingOrder.findMany({
                 where: { eventId: id, status: 'CONFIRMED' },
                 include: { user: { select: { email: true, displayName: true } } }
             });
