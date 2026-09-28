@@ -1,4 +1,5 @@
-import { Queue } from 'bullmq';
+import { Queue, Job } from 'bullmq';
+import { REDIS_ENABLED } from '../config/redis';
 
 function buildConnection() {
     const url = process.env.REDIS_URL;
@@ -22,7 +23,33 @@ function buildConnection() {
 
 export const EMAIL_QUEUE_NAME = 'email-queue';
 
-export const emailQueue = new Queue(EMAIL_QUEUE_NAME, {
+export interface JobQueue {
+    name: string;
+    add(jobName: string, data: any): Promise<unknown>;
+}
+
+let inlineJobCount = 0;
+
+// Without Redis there is no worker to pick jobs up, so run the processor directly in the
+// background. No retries in this mode — a failure is logged and dropped.
+const inlineEmailQueue: JobQueue = {
+    name: EMAIL_QUEUE_NAME,
+    async add(jobName, data) {
+        const job = { id: `inline-${++inlineJobCount}`, name: jobName, data } as Job;
+        setImmediate(async () => {
+            try {
+                // Lazy import: email.worker imports this module
+                const { processEmailJob } = await import('./email.worker');
+                await processEmailJob(job);
+            } catch {
+                // already logged by the processor
+            }
+        });
+        return job;
+    },
+};
+
+export const emailQueue: JobQueue = !REDIS_ENABLED ? inlineEmailQueue : new Queue(EMAIL_QUEUE_NAME, {
     connection: buildConnection(),
     defaultJobOptions: {
         attempts: 3,
