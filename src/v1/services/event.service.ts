@@ -73,6 +73,8 @@ export interface CreateEventInput {
     }[];
     communityId?: string;
     chapterId?: string;
+    // Update only: removed ticket id -> ticket id (existing or new placeholder) its buyers move to
+    ticketReassignments?: Record<string, string>;
 }
 
 /**
@@ -455,41 +457,35 @@ export class EventService {
             }
         }
 
-        // Handle tickets: upsert existing, create new, delete removed (only if unsold)
+        // Handle tickets: update existing, create new, delete removed.
+        // Removed tickets that already have buyers are not orphaned: their orders,
+        // attendees and user tickets are moved onto a ticket that remains active
+        // (the organizer's choice via ticketReassignments, else the first ticket).
+        // Price edits on existing tickets never touch what buyers already paid.
         // All ticket ops run in a transaction so a partial failure doesn't leave
         // the DB in an inconsistent state.
         if (data.tickets && data.tickets.length > 0) {
             await prisma.$transaction(async (tx) => {
                 const existingTickets = await tx.ticket.findMany({
                     where: { eventId: id },
-                    include: { orderItems: { take: 1 } },
+                    include: { _count: { select: { orderItems: true, attendees: true, userTickets: true } } },
                 });
 
                 const existingMap = new Map(existingTickets.map(t => [t.id, t]));
 
-                // Only treat an incoming id as "existing" when it is actually a DB UUID
-                const submittedIds = new Set(
-                    (data.tickets as any[])
-                        .map((t: any) => t.id)
-                        .filter((tid: unknown) => typeof tid === 'string' && existingMap.has(tid))
-                );
-
-                // Delete tickets removed by the organizer — only if no orders placed
-                for (const existing of existingTickets) {
-                    if (!submittedIds.has(existing.id) && existing.orderItems.length === 0) {
-                        await tx.ticket.delete({ where: { id: existing.id } });
-                    }
-                }
+                // Maps every submitted id (DB UUID or frontend placeholder) to its real DB id
+                const resolvedIds = new Map<string, string>();
+                const keptIds: string[] = [];
 
                 // Create or update each submitted ticket
                 for (const ticket of data.tickets as any[]) {
-                    const existing = existingMap.get(ticket.id);
+                    const existing = typeof ticket.id === 'string' ? existingMap.get(ticket.id) : undefined;
                     if (existing) {
                         // Preserve sold count when adjusting quantity
                         const sold = existing.quantity - existing.remaining;
                         const newRemaining = Math.max(0, ticket.quantity - sold);
                         await tx.ticket.update({
-                            where: { id: ticket.id },
+                            where: { id: existing.id },
                             data: {
                                 name: ticket.name,
                                 description: ticket.description || null,
@@ -505,10 +501,12 @@ export class EventService {
                                 maxInstallments: ticket.maxInstallments || null,
                             },
                         });
+                        resolvedIds.set(existing.id, existing.id);
+                        keptIds.push(existing.id);
                     } else {
                         // New ticket — frontend ID is a temporary placeholder, ignore it.
                         // Prisma will auto-generate the real UUID.
-                        await tx.ticket.create({
+                        const created = await tx.ticket.create({
                             data: {
                                 eventId: id,
                                 name: ticket.name,
@@ -525,7 +523,53 @@ export class EventService {
                                 maxInstallments: ticket.maxInstallments || null,
                             },
                         });
+                        if (typeof ticket.id === 'string') resolvedIds.set(ticket.id, created.id);
+                        keptIds.push(created.id);
                     }
+                }
+
+                const keptSet = new Set(keptIds);
+                const removedTickets = existingTickets.filter(t => !keptSet.has(t.id));
+
+                for (const removed of removedTickets) {
+                    const hasBuyers = removed._count.orderItems > 0
+                        || removed._count.attendees > 0
+                        || removed._count.userTickets > 0;
+
+                    if (hasBuyers) {
+                        const requested = data.ticketReassignments?.[removed.id];
+                        const targetId = (requested && resolvedIds.get(requested)) || keptIds[0];
+                        const target = await tx.ticket.findUniqueOrThrow({ where: { id: targetId } });
+
+                        await tx.orderItem.updateMany({
+                            where: { ticketId: removed.id },
+                            data: { ticketId: target.id, ticketName: target.name },
+                        });
+                        await tx.attendee.updateMany({
+                            where: { ticketId: removed.id },
+                            data: { ticketId: target.id },
+                        });
+                        await tx.userTicket.updateMany({
+                            where: { ticketId: removed.id },
+                            data: { ticketId: target.id },
+                        });
+
+                        // Moved buyers occupy seats on the target ticket. Grow its
+                        // quantity if needed so they never push remaining below zero.
+                        const moved = removed.quantity - removed.remaining;
+                        if (moved > 0) {
+                            const overflow = Math.max(0, moved - target.remaining);
+                            await tx.ticket.update({
+                                where: { id: target.id },
+                                data: {
+                                    quantity: target.quantity + overflow,
+                                    remaining: target.remaining - moved + overflow,
+                                },
+                            });
+                        }
+                    }
+
+                    await tx.ticket.delete({ where: { id: removed.id } });
                 }
             });
         }
