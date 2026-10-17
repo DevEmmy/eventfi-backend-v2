@@ -71,7 +71,10 @@ export const createEventSchema = z.object({
     chapterId: z.string().uuid().optional(),
 });
 
-export const updateEventSchema = createEventSchema.partial();
+export const updateEventSchema = createEventSchema.partial().extend({
+    // Removed ticket id -> id of the kept ticket its buyers should move to
+    ticketReassignments: z.record(z.string(), z.string()).optional(),
+});
 
 export const reviewSchema = z.object({
     rating: z.number().int().min(1, 'Rating must be at least 1').max(5, 'Rating cannot exceed 5'),
